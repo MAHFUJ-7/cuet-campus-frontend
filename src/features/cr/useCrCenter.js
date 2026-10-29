@@ -158,7 +158,10 @@ export function useCrCenter(profile) {
           sectionName: profile?.section?.name ?? profile?.section?.label ?? '',
           departmentCode: profile?.department?.code ?? '',
           type: payload.type,
-          title: OVERRIDE_TITLES[payload.type] ?? 'Extra class scheduled',
+          title:
+            payload.classType === 'ct'
+              ? 'CT declared'
+              : OVERRIDE_TITLES[payload.type] ?? 'Extra class scheduled',
           description: `${successContext}${reason ? ` \u2014 ${reason}` : ''}`.trim(),
           priority: 'normal',
           scope: 'section',
@@ -190,6 +193,8 @@ export function useCrCenter(profile) {
         if (serverId) {
           try {
             localFeed.markLocalOverrideSynced(localId, serverId);
+            // The matching Updates post synced too — stop showing it twice.
+            localFeed.markLocalUpdateSynced(localId, serverId);
           } catch {
             /* non-critical */
           }

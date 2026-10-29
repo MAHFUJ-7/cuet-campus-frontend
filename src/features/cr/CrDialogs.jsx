@@ -198,6 +198,62 @@ function useRoutineCourses(profile) {
   return courses;
 }
 
+/**
+ * CT-slot times per weekday for the section routine.
+ *
+ * A class test declared "in the CT slot" still needs the slot's real start and
+ * end times: local declarations without times are dropped by the calendar
+ * overlay, so the declaration must always carry them.
+ */
+function useCtSlots(profile) {
+  const [slots, setSlots] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let weekly = [];
+      if (isOfflineSession()) {
+        weekly = studentRoutine({ section: profile?.section?.name ?? 'A' });
+      } else {
+        try {
+          const response = await getWeeklyRoutine();
+          const payload = extractPayload(response);
+          weekly = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.items)
+              ? payload.items
+              : [];
+        } catch {
+          /* fall back to the saved routine */
+        }
+        if (weekly.length === 0) weekly = offlineCache.getCachedWeeklyRoutine() ?? [];
+        if (weekly.length === 0) {
+          weekly = studentRoutine({ section: profile?.section?.name ?? 'A' });
+        }
+      }
+
+      const map = {};
+      for (const entry of applyRoutineOverrides(
+        weekly.map(parseRoutineEntry),
+        profile?.section
+      )) {
+        if (entry.classType !== 'ct' || !entry.startTime || !entry.endTime) continue;
+        const day = String(entry.day ?? '').trim();
+        if (!day || map[day]) continue;
+        map[day] = { startTime: entry.startTime, endTime: entry.endTime };
+      }
+      if (!cancelled) setSlots(map);
+    })().catch(() => {
+      if (!cancelled) setSlots({});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.section?.name]);
+
+  return slots;
+}
+
 // ---------------------------------------------------------------------------
 // Shared dialog shell with structured preview
 // ---------------------------------------------------------------------------
@@ -873,6 +929,211 @@ export function ExtraClassDialog({ open, onClose, controller, profile }) {
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         hint="e.g. makeup class for the cancelled lecture"
+        multiline
+        rows={2}
+      />
+    </CrFormDialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 5. Declare CT (class test)
+// ---------------------------------------------------------------------------
+
+export function DeclareCtDialog({ open, onClose, controller, profile }) {
+  const toast = useToast();
+  const courses = useRoutineCourses(profile);
+  const ctSlots = useCtSlots(profile);
+  const [courseId, setCourseId] = useState(null);
+  const [date, setDate] = useState(tomorrowIso);
+  const [useSlot, setUseSlot] = useState(true);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('09:50');
+  const [room, setRoom] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setDate(tomorrowIso());
+    setUseSlot(true);
+    setRoom('');
+    setReason('');
+    setBusy(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!courses || courses.length === 0) return;
+    setCourseId((current) =>
+      current && courses.some((c) => c.id === current) ? current : courses[0].id
+    );
+  }, [courses]);
+
+  const course = courses?.find((c) => c.id === courseId) ?? null;
+  const daySlot = ctSlots?.[weekdayName(date)] ?? null;
+  const slotTimes = daySlot?.startTime && daySlot?.endTime ? daySlot : null;
+  // Without a CT slot on that weekday the declaration falls back to a custom
+  // time instead of silently losing its times.
+  const usesSlot = useSlot && Boolean(slotTimes);
+  const customTimeValid = Boolean(startTime && endTime && startTime < endTime);
+  const timeValid = usesSlot || customTimeValid;
+  const timeLabel = usesSlot
+    ? `CT slot ${slotTimes.startTime} \u2013 ${slotTimes.endTime}`
+    : `${startTime} \u2013 ${endTime}`;
+
+  const confirm = async () => {
+    if (!course) return;
+    setBusy(true);
+    try {
+      const feedback = await controller.submitOverride(
+        {
+          type: 'extra_class',
+          classType: 'ct',
+          date,
+          courseId: course.id,
+          courseCode: course.code,
+          courseTitle: course.title,
+          startTime: usesSlot ? slotTimes.startTime : startTime,
+          endTime: usesSlot ? slotTimes.endTime : endTime,
+          ...(room.trim() ? { room: room.trim() } : {}),
+          reason,
+        },
+        `${course.code} CT on ${dmyFromIso(date)}`
+      );
+      toast.success(feedback);
+      onClose();
+    } catch (error) {
+      toast.error(`Failed to declare CT: ${String(error?.message ?? error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <CrFormDialog
+      open={open}
+      onClose={onClose}
+      icon="quiz"
+      tone={{ bg: 'bg-info/15', text: 'text-info' }}
+      title="Declare Class Test (CT)"
+      busy={busy}
+      confirmDisabled={!course || !timeValid}
+      onConfirm={confirm}
+      details={[
+        { label: 'Course', value: course ? `${course.code} \u2014 ${course.title}` : '—' },
+        { label: 'Date', value: dmyFromIso(date) },
+        { label: 'Time', value: timeLabel },
+        ...(room.trim() ? [{ label: 'Room', value: room.trim() }] : []),
+        { label: 'Note', value: reason || '\u2014' },
+      ]}
+      warning="The CT appears on your section's calendar right away — you can reschedule or cancel it from here later."
+    >
+      {courses == null ? (
+        <div className="flex justify-center py-4">
+          <Spinner size={24} />
+        </div>
+      ) : courses.length === 0 ? (
+        <p className="text-body-md text-ink-muted">No courses found in your routine yet.</p>
+      ) : (
+        <Field label="Course">
+          <select
+            value={courseId ?? ''}
+            onChange={(e) => setCourseId(e.target.value)}
+            className={INPUT_CLASS}
+          >
+            {courses.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.code} — {entry.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Date">
+          <input
+            type="date"
+            value={date}
+            min={isoDate(new Date())}
+            onChange={(e) => setDate(e.target.value || tomorrowIso())}
+            className={INPUT_CLASS}
+          />
+        </Field>
+        <div className="col-span-2">
+          <Field label="When">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!slotTimes}
+                onClick={() => setUseSlot(true)}
+                className={`flex-1 rounded-xl border px-3 py-2.5 text-label-md font-semibold transition ${
+                  usesSlot
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-outline text-ink-muted hover:border-primary/40'
+                } ${slotTimes ? '' : 'cursor-not-allowed opacity-50'}`}
+              >
+                {slotTimes
+                  ? `CT slot ${slotTimes.startTime}\u2013${slotTimes.endTime}`
+                  : 'No CT slot'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setUseSlot(false)}
+                className={`flex-1 rounded-xl border px-3 py-2.5 text-label-md font-semibold transition ${
+                  !usesSlot
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-outline text-ink-muted hover:border-primary/40'
+                }`}
+              >
+                Custom time
+              </button>
+            </div>
+            {ctSlots != null && !slotTimes && (
+              <span className="mt-1 block text-label-sm text-ink-muted">
+                No CT slot in the routine on {weekdayName(date)} — pick a custom time.
+              </span>
+            )}
+          </Field>
+        </div>
+      </div>
+
+      {!usesSlot && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Start">
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="End">
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </Field>
+        </div>
+      )}
+
+      <Field label="Room (optional)">
+        <input
+          type="text"
+          value={room}
+          onChange={(e) => setRoom(e.target.value)}
+          placeholder="Leave blank if not decided"
+          className={INPUT_CLASS}
+        />
+      </Field>
+
+      <TextField
+        label="Syllabus / note (optional)"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        hint="e.g. CT-2 · Chapters 4–6"
         multiline
         rows={2}
       />

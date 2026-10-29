@@ -17,7 +17,7 @@ import {
 } from '../../components/ui/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { upload } from '../../api/client.js';
+import { extractPayload, upload } from '../../api/client.js';
 import { createUpdate } from '../../api/endpoints.js';
 import { localFeed } from '../../lib/localFeed.js';
 import { batchNumberLabel } from '../../lib/models.js';
@@ -144,13 +144,30 @@ export default function ComposeUpdatePage() {
 
     let feedback;
     try {
-      if (attachments.length === 0) {
-        await createUpdate(data);
-      } else {
-        const formData = new FormData();
-        formData.append('data', JSON.stringify({ ...data, attachments: update.attachments }));
-        for (const file of attachments) formData.append('files', file);
-        await upload('/updates', formData);
+      const response =
+        attachments.length === 0
+          ? await createUpdate(data)
+          : await (() => {
+              const formData = new FormData();
+              formData.append(
+                'data',
+                JSON.stringify({ ...data, attachments: update.attachments })
+              );
+              for (const file of attachments) formData.append('files', file);
+              return upload('/updates', formData);
+            })();
+
+      // The server copy now carries this post, so retire the local mirror to
+      // avoid showing the same announcement twice in the feed.
+      const saved = extractPayload(response);
+      const serverId =
+        saved && typeof saved === 'object' ? saved.id ?? saved._id ?? null : null;
+      if (serverId) {
+        try {
+          localFeed.markLocalUpdateSynced(update.id, serverId);
+        } catch {
+          /* non-critical */
+        }
       }
       feedback = `Published \u2014 delivered to ${isBatch ? 'your batch' : `Section ${sectionName}`}`;
     } catch {

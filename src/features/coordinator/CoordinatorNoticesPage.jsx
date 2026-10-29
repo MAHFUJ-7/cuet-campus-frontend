@@ -31,12 +31,12 @@ import { isOfflineSession } from '../../lib/session.js';
 import { sectionIdOf, sectionTermIdOf } from './CoordinatorAcademicsPage.jsx';
 import { useSelectedTerm } from './coordinatorState.js';
 
-const toArray = (payload) =>
-  Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.data)
-      ? payload.data
-      : [];
+const toArray = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
 
 const PRIORITIES = [
   { value: 'normal', label: 'Normal' },

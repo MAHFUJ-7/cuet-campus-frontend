@@ -39,12 +39,30 @@ function getToken() {
 // 401s are broadcast so AuthContext can drop a dead session immediately.
 const unauthorizedListeners = new Set();
 
+/**
+ * Sign-in endpoints answer 401 for wrong credentials — that is a login error,
+ * not an expired session, so it must never clear the token or sign anyone out.
+ */
+const CREDENTIAL_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/dev-login',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/google',
+];
+
+const isCredentialPath = (path) =>
+  CREDENTIAL_PATHS.some((entry) => path === entry || path.startsWith(`${entry}/`));
+
 export function onUnauthorized(listener) {
   unauthorizedListeners.add(listener);
   return () => unauthorizedListeners.delete(listener);
 }
 
-function handleUnauthorized() {
+function handleUnauthorized(path) {
+  if (!getToken()) return; // nothing was sent, so there is no session to end
+  if (isCredentialPath(path)) return; // wrong email/password is not an expiry
   if (getToken() === OFFLINE_SESSION_TOKEN) return; // never invalidate a demo session
   removeRaw(KEYS.authToken);
   unauthorizedListeners.forEach((listener) => {
@@ -159,7 +177,7 @@ async function request(
         : null;
 
     // Clear the token on 401 to prevent infinite auth error loops.
-    if (response.status === 401) handleUnauthorized();
+    if (response.status === 401) handleUnauthorized(path);
 
     throw new ApiError({
       status: response.status,
@@ -206,7 +224,7 @@ export async function upload(path, formData, { timeoutMs = 60_000 } = {}) {
       body && typeof body === 'object' && typeof body.message === 'string'
         ? body.message
         : null;
-    if (response.status === 401) handleUnauthorized();
+    if (response.status === 401) handleUnauthorized(path);
     throw new ApiError({
       status: response.status,
       type: 'badResponse',
@@ -231,7 +249,7 @@ export async function rawRequest(method, path, options = {}) {
     const body = await parseResponseBody(response);
     const serverMessage =
       body && typeof body === 'object' && typeof body.message === 'string' ? body.message : null;
-    if (response.status === 401) handleUnauthorized();
+    if (response.status === 401) handleUnauthorized(path);
     throw new ApiError({
       status: response.status,
       type: 'badResponse',

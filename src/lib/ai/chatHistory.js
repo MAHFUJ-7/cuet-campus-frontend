@@ -4,6 +4,21 @@ import { KEYS, readJson, removeRaw, writeJson } from '../storage.js';
 const MAX_CONVERSATIONS = 50;
 const MAX_MESSAGES_PER_CONVERSATION = 200;
 
+function ownerKey(owner) {
+  const value = typeof owner === 'object' ? owner?.id ?? owner?.email : owner;
+  return String(value ?? 'anonymous').trim().toLowerCase() || 'anonymous';
+}
+
+function readStore() {
+  const decoded = readJson(KEYS.chatConversations, {});
+  if (Array.isArray(decoded)) return { __legacy__: decoded };
+  return decoded && typeof decoded === 'object' ? decoded : {};
+}
+
+function writeStore(store) {
+  writeJson(KEYS.chatConversations, store);
+}
+
 /** One persisted AI conversation. */
 export function makeConversation({ id, title, messages, updatedAt }) {
   return {
@@ -17,11 +32,18 @@ export function makeConversation({ id, title, messages, updatedAt }) {
 }
 
 export const chatHistory = {
-  loadAll() {
+  loadAll(owner) {
     try {
-      const decoded = readJson(KEYS.chatConversations, []);
-      if (!Array.isArray(decoded)) return [];
-      return decoded
+      const key = ownerKey(owner);
+      const store = readStore();
+      const legacy = Array.isArray(store.__legacy__) ? store.__legacy__ : null;
+      const entries = Array.isArray(store[key]) ? store[key] : legacy ?? [];
+      if (legacy && key !== '__legacy__') {
+        store[key] = legacy;
+        delete store.__legacy__;
+        writeStore(store);
+      }
+      return entries
         .map((entry) => makeConversation(entry ?? {}))
         .filter((c) => c.id)
         .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -30,9 +52,11 @@ export const chatHistory = {
     }
   },
 
-  upsert(conversation) {
+  upsert(owner, conversation) {
     try {
-      const all = this.loadAll().filter((c) => c.id !== conversation.id);
+      const key = ownerKey(owner);
+      const store = readStore();
+      const all = this.loadAll(owner).filter((c) => c.id !== conversation.id);
       all.unshift(conversation);
       const trimmed = all.slice(0, MAX_CONVERSATIONS).map((c) => {
         if (c.messages.length <= MAX_MESSAGES_PER_CONVERSATION) return c;
@@ -41,40 +65,47 @@ export const chatHistory = {
           messages: c.messages.slice(c.messages.length - MAX_MESSAGES_PER_CONVERSATION),
         };
       });
-      writeJson(
-        KEYS.chatConversations,
-        trimmed.map((c) => ({
-          id: c.id,
-          title: c.title,
-          updatedAt: c.updatedAt.toISOString(),
-          messages: c.messages,
-        }))
-      );
+      store[key] = trimmed.map((c) => ({
+        id: c.id,
+        title: c.title,
+        updatedAt: c.updatedAt.toISOString(),
+        messages: c.messages,
+      }));
+      delete store.__legacy__;
+      writeStore(store);
     } catch {
       /* persistence failures never break the chat itself */
     }
   },
 
-  delete(id) {
+  delete(owner, id) {
     try {
-      const remaining = this.loadAll().filter((c) => c.id !== id);
-      writeJson(
-        KEYS.chatConversations,
-        remaining.map((c) => ({
+      const key = ownerKey(owner);
+      const store = readStore();
+      store[key] = this.loadAll(owner)
+        .filter((c) => c.id !== id)
+        .map((c) => ({
           id: c.id,
           title: c.title,
           updatedAt: c.updatedAt.toISOString(),
           messages: c.messages,
-        }))
-      );
+        }));
+      writeStore(store);
     } catch {
       /* ignore */
     }
   },
 
-  deleteAll() {
+  deleteAll(owner) {
     try {
-      removeRaw(KEYS.chatConversations);
+      if (owner == null) {
+        removeRaw(KEYS.chatConversations);
+        return;
+      }
+      const key = ownerKey(owner);
+      const store = readStore();
+      delete store[key];
+      writeStore(store);
     } catch {
       /* ignore */
     }

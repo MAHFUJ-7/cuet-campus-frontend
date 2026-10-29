@@ -19,7 +19,7 @@ function parseSetupId(email) {
   const [, batchCode, deptCode, roll] = match;
   return {
     studentId: `${batchCode}${deptCode}${roll}`,
-    batch: `20${batchCode}`,
+    batch: batchCode,
     department: DEPARTMENT_CODES[deptCode] ?? null,
   };
 }
@@ -72,7 +72,7 @@ export default function SetupPage() {
       studentId: !studentId.trim() ? 'Required' : studentId.trim().length !== 7 ? 'Must be 7 digits' : null,
       department: department ? null : 'Required',
       batch: batch ? null : 'Required',
-      section: section ? null : 'Required',
+      section: null,
       password: password ? validatePassword(password) : null,
       confirm: password ? validateConfirmPassword(confirm, password) : null,
     };
@@ -97,7 +97,7 @@ export default function SetupPage() {
             studentId: studentId.trim(),
             departmentId: department,
             batchId: batch,
-            sectionId: section,
+            ...(section ? { sectionId: section } : {}),
             level: 1,
             term: 1,
           });
@@ -197,12 +197,19 @@ export default function SetupPage() {
                   error={errors.section}
                 />
               </div>
+              <p className="text-label-sm text-ink-muted">
+                Section is assigned by the coordinator when an ID-range rule exists. Select one only if no coordinator assignment has been configured yet.
+              </p>
             </div>
 
             <div className="mt-7">
-              <SectionHeader label="Set Password (Optional)" />
+              <SectionHeader
+                label={auth.profile?.hasPassword ? 'Change Password (Optional)' : 'Set Password (Optional)'}
+              />
               <p className="mt-1 text-body-sm text-ink-muted">
-                Create a password so you can login without Google.
+                {auth.profile?.hasPassword
+                  ? 'You already have a password. Leave both fields empty to keep it, or enter a new one to replace it.'
+                  : 'Create a password so you can login without Google.'}
               </p>
               <div className="mt-3 space-y-4">
                 <TextField

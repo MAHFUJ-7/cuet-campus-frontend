@@ -86,9 +86,14 @@ export const localFeed = {
       .sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0));
   },
 
-  /** Local posts the signed-in profile is allowed to see. */
+  /**
+   * Local posts the signed-in profile is allowed to see. Posts that already
+   * reached the server are skipped so the feed does not show them twice.
+   */
   visibleLocalUpdates(profile) {
-    return this.getLocalUpdates().filter((update) => isUpdateVisibleTo(update, profile));
+    return this.getLocalUpdates().filter(
+      (update) => !update.synced && isUpdateVisibleTo(update, profile)
+    );
   },
 
   /** Prepends a locally posted update. Returns the stored copy. */
@@ -97,6 +102,16 @@ export const localFeed = {
     existing.unshift(update);
     writeJson(KEYS.crLocalUpdates, existing.slice(0, MAX_ENTRIES));
     return update;
+  },
+
+  /** Records the server id once a local post has synced. */
+  markLocalUpdateSynced(localId, serverId) {
+    const list = this.getLocalUpdates().map((update) =>
+      String(update.id) === String(localId)
+        ? { ...update, synced: true, serverId: String(serverId) }
+        : update
+    );
+    writeJson(KEYS.crLocalUpdates, list);
   },
 
   /** Removes a single local update (e.g. after its declaration is withdrawn). */

@@ -4,7 +4,6 @@ import { apiClient, rawRequest, upload } from './client.js';
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
-export const googleAuth = (data) => apiClient.post('/auth/google', data);
 export const register = (data) => apiClient.post('/auth/register', data);
 export const login = (data) => apiClient.post('/auth/login', data);
 /** Dev-only: email in, session out with the account's real role. */
@@ -13,6 +12,8 @@ export const devLogin = (email, options) =>
 export const setPassword = (data) => apiClient.post('/auth/set-password', data);
 export const forgotPassword = (email) =>
   apiClient.post('/auth/forgot-password', { email });
+export const resetPassword = ({ token, password }) =>
+  apiClient.post('/auth/reset-password', { token, password });
 export const getProfile = () => apiClient.get('/auth/me');
 export const updateMyProfile = (data) => apiClient.put('/users/me', data);
 export const completeProfile = (data) => apiClient.post('/users/complete-profile', data);
@@ -46,6 +47,7 @@ export const getDailyRoutine = ({ day, batchId, sectionId } = {}) =>
   apiClient.get('/routine/daily', { query: { day, batchId, sectionId } });
 export const getWeeklyRoutine = ({ batchId, sectionId } = {}) =>
   apiClient.get('/routine/weekly', { query: { batchId, sectionId } });
+export const getAiContext = () => apiClient.get('/ai/context');
 export const createRoutine = (data) => apiClient.post('/routine', data);
 export const updateRoutine = (id, data) => apiClient.put(`/routine/${id}`, data);
 export const deleteRoutine = (id) => apiClient.delete(`/routine/${id}`);

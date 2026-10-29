@@ -46,6 +46,9 @@ export function profileHasPermission(profile, permission) {
 
 /** Batch number without a leading "Batch" (handles label/name variants). */
 export function batchNumberLabel(batch) {
+  if (batch?.batchNumber != null && Number.isFinite(Number(batch.batchNumber))) {
+    return String(batch.batchNumber);
+  }
   const raw = String(batch?.label ?? batch?.name ?? '').trim();
   return raw.replace(/^batch\s+/i, '');
 }
@@ -199,7 +202,7 @@ export function parseExamEntry(json) {
     endTime: str(json.endTime),
     room: str(json.room) || null,
     venue: str(json.venue) || null,
-    examType: str(json.examType) || str(json.type, 'midterm'),
+    examType: str(json.examType) || str(json.type, 'final'),
     course:
       json.courseId && typeof json.courseId === 'object'
         ? parseCourseInfo(json.courseId)

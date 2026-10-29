@@ -8,6 +8,7 @@
 //
 // External calls never carry the campus session token.
 import { apiUrl, getAuthToken } from '../../api/client.js';
+import { getAiContext } from '../../api/endpoints.js';
 import { dayMatches, endToday, startToday } from '../datetime.js';
 import { offlineCache } from '../offlineCache.js';
 import { academicLabel, roleLabel } from '../models.js';
@@ -126,20 +127,20 @@ async function postCompletions({ provider, modelId, systemPrompt, history, messa
   throw new Error('The provider returned an empty response.');
 }
 
-async function sendViaCustom(message, history, profile) {
+async function sendViaCustom(message, history, profile, context) {
   const provider = aiProvider.readCustomProvider();
   if (!provider) throw new Error('Custom provider is not configured anymore');
   const text = await postCompletions({
     provider,
     modelId: provider.modelId,
-    systemPrompt: buildSystemPrompt(profile),
+    systemPrompt: buildSystemPrompt(profile, context),
     history,
     message,
   });
   return { text, source: AiActiveMode.custom };
 }
 
-async function sendViaGemini(message, history, profile) {
+async function sendViaGemini(message, history, profile, context) {
   const key = geminiKey.read();
   if (!key) throw new Error('Gemini key is not configured anymore');
   const model = aiProvider.readSelectedGeminiModel();
@@ -158,7 +159,7 @@ async function sendViaGemini(message, history, profile) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: buildSystemPrompt(profile) }] },
+          system_instruction: { parts: [{ text: buildSystemPrompt(profile, context) }] },
           contents,
           generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
         }),
@@ -242,11 +243,19 @@ export async function sendChatMessage(message, history, profile) {
   if (!clean) throw new Error('Message must not be empty');
   const text = clean.length > MAX_MESSAGE_LENGTH ? clean.slice(0, MAX_MESSAGE_LENGTH) : clean;
 
+  let context = null;
+  try {
+    const response = await getAiContext();
+    context = response?.data?.data ?? response?.data ?? null;
+  } catch {
+    // Provider calls can still use the locally cached routine if the API is unavailable.
+  }
+
   switch (aiProvider.resolveActiveMode()) {
     case AiActiveMode.custom:
-      return sendViaCustom(text, history, profile);
+      return sendViaCustom(text, history, profile, context);
     case AiActiveMode.gemini:
-      return sendViaGemini(text, history, profile);
+      return sendViaGemini(text, history, profile, context);
     default:
       return sendViaServer(text, history, profile);
   }
@@ -270,7 +279,7 @@ export async function testCustomProvider(provider) {
  * Compact academic context injected into every external call so replies stay
  * relevant even without the campus backend.
  */
-export function buildSystemPrompt(profile) {
+export function buildSystemPrompt(profile, context = null) {
   const identity = profile
     ? `${profile.name} (${roleLabel(profile)}, ${academicLabel(profile)})`
     : 'an anonymous student';
@@ -301,13 +310,15 @@ export function buildSystemPrompt(profile) {
     /* context is best-effort */
   }
 
+  const contextText = context?.text ? `\nLIVE CAMPUS DATA:\n${context.text}\n` : '';
   return (
     'You are CUET AI Campus Assistant for Chittagong University of ' +
     `Engineering & Technology (CUET). You are helping ${identity}.\n` +
     'Answer questions about schedules, courses and study help. Be concise, ' +
     'friendly and accurate. Use Markdown sparingly (plain text renders).\n' +
     'Never invent instructors, rooms or dates that are not listed below.\n' +
-    (routineText ? `\nSECTION WEEKLY ROUTINE:\n${routineText}\n` : '')
+    (routineText ? `\nSECTION WEEKLY ROUTINE:\n${routineText}\n` : '') +
+    contextText
   );
 }
 

@@ -11,6 +11,7 @@ import { CrActionsGrid, CrDeclarationsSection, CrScopeHero } from './CrShared.js
 import {
   ClassChangeDialog,
   DeclareAutoDialog,
+  DeclareCtDialog,
   DeclareMidBreakDialog,
   ExtraClassDialog,
 } from './CrDialogs.jsx';
@@ -24,6 +25,7 @@ const DIALOG_ACTIONS = new Set([
   'room_change',
   'time_change',
   'extra_class',
+  'declare_ct',
   'permanent_routine',
 ]);
 
@@ -128,6 +130,14 @@ export default function CrDashboardPage() {
       )}
       {flow === 'extra_class' && (
         <ExtraClassDialog
+          open
+          onClose={closeFlow}
+          controller={controller}
+          profile={profile}
+        />
+      )}
+      {flow === 'declare_ct' && (
+        <DeclareCtDialog
           open
           onClose={closeFlow}
           controller={controller}

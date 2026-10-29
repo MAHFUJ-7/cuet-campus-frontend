@@ -99,7 +99,6 @@ export function AuthProvider({ children }) {
     clearAuthToken();
     offlineCache.clearCache();
     localFeed.clearAll();
-    chatHistory.deleteAll();
     setSelectedTermId(null);
     profileRef.current = null;
     setState({ initialized: true, loggedIn: false, offline: false, profile: null });
@@ -111,7 +110,6 @@ export function AuthProvider({ children }) {
       onUnauthorized(() => {
         offlineCache.clearCache();
         localFeed.clearAll();
-        chatHistory.deleteAll();
         setSelectedTermId(null);
         profileRef.current = null;
         setState({ initialized: true, loggedIn: false, offline: false, profile: null });
@@ -335,13 +333,6 @@ export function AuthProvider({ children }) {
     [refreshProfile]
   );
 
-  /** Google Sign-In — requires Firebase configuration (not bundled yet). */
-  const signInWithGoogle = useCallback(async () => {
-    throw new Error(
-      'Google Sign-In is not configured in this build. Use email/password or a quick test login.'
-    );
-  }, []);
-
   const signOut = useCallback(async () => {
     await clearLocalSession();
   }, [clearLocalSession]);
@@ -411,7 +402,6 @@ export function AuthProvider({ children }) {
       dashboardRoute: () => dashboardRouteForProfile(profile),
       signInWithEmail,
       signUpWithEmail,
-      signInWithGoogle,
       quickTestLogin,
       signInOffline,
       adoptSession,
@@ -425,7 +415,6 @@ export function AuthProvider({ children }) {
     state,
     signInWithEmail,
     signUpWithEmail,
-    signInWithGoogle,
     quickTestLogin,
     signInOffline,
     adoptSession,

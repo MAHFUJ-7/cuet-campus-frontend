@@ -85,7 +85,7 @@ export default function RegisterPage() {
             <p className="mt-2 text-body-md text-white/85">
               Use your official CUET email. Batch, department and roll are auto-extracted —
               for example <span className="font-semibold">u2204037@student.cuet.ac.bd</span> is
-              Batch 2022, CSE, roll 037 (ID 2204037).
+              Batch 22, CSE, roll 037 (ID 2204037).
             </p>
           </div>
 

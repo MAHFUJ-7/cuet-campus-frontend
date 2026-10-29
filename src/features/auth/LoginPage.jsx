@@ -1,8 +1,8 @@
 // Login screen — port of login_screen.dart.
-// Email/password, quick test login, three preset role cards, Google stub.
+// Email/password login, quick test login and preset role cards.
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { CuetBackground, Divider, Icon, Spinner, TextField } from '../../components/ui/index.jsx';
+import { CuetBackground, Icon, Spinner, TextField } from '../../components/ui/index.jsx';
 import { dashboardRouteForProfile, useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { validateLoginEmail, validateLoginPassword } from '../../lib/validators.js';
@@ -16,7 +16,7 @@ const QUICK_PRESETS = [
     icon: 'school',
     gradient: ['#3B82F6', '#1D4ED8'],
     email: 'u2204001@student.cuet.ac.bd',
-    name: 'Ariful Islam',
+    name: 'Demo Student',
     section: 'A',
     route: '/home',
   },
@@ -26,8 +26,8 @@ const QUICK_PRESETS = [
     sublabel: 'Sec B • L3 T-II',
     icon: 'campaign',
     gradient: ['#F59E0B', '#D97706'],
-    email: 'u2204037@student.cuet.ac.bd',
-    name: 'Nishat',
+    email: 'u2204002@student.cuet.ac.bd',
+    name: 'Demo CR',
     section: 'B',
     role: 'cr',
     route: '/home',
@@ -39,7 +39,7 @@ const QUICK_PRESETS = [
     icon: 'verified_user',
     gradient: ['#8B5CF6', '#5B21B6'],
     email: 'coordinator@cuet.ac.bd',
-    name: 'Md. Rashadur Rahman',
+    name: 'Demo Coordinator',
     section: 'A',
     route: '/coordinator',
   },
@@ -135,18 +135,6 @@ export default function LoginPage() {
       showSnack(describeApiError(err));
     } finally {
       setPresetBusy(null);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    try {
-      await auth.signInWithGoogle();
-      finishLogin(auth.profile);
-    } catch (err) {
-      showSnack(err?.message?.includes('not configured') ? err.message : `Google Sign-In failed: ${describeApiError(err)}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -252,23 +240,6 @@ export default function LoginPage() {
               </button>
             </div>
           </div>
-
-          {/* OR divider */}
-          <div className="mt-4 flex items-center gap-4">
-            <Divider />
-            <span className="text-label-sm font-medium text-ink-muted">OR</span>
-            <Divider />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={busy}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-outline py-3 text-label-lg font-medium text-ink transition-colors hover:bg-surface-variant disabled:opacity-60"
-          >
-            <Icon name="g_translate" size={22} className="text-primary" />
-            Continue with Google
-          </button>
 
           <p className="mt-5 text-center text-body-md text-ink-muted">
             Don't have an account?{' '}

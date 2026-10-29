@@ -17,6 +17,7 @@ const LoginPage = lazy(() => import('./features/auth/LoginPage.jsx'));
 const OnboardingPage = lazy(() => import('./features/auth/OnboardingPage.jsx'));
 const RegisterPage = lazy(() => import('./features/auth/RegisterPage.jsx'));
 const ForgotPasswordPage = lazy(() => import('./features/auth/ForgotPasswordPage.jsx'));
+const ResetPasswordPage = lazy(() => import('./features/auth/ResetPasswordPage.jsx'));
 const SetupPage = lazy(() => import('./features/auth/SetupPage.jsx'));
 const SetPasswordPage = lazy(() => import('./features/auth/SetPasswordPage.jsx'));
 const ProfileCompletionPage = lazy(() => import('./features/auth/ProfileCompletionPage.jsx'));
@@ -153,6 +154,7 @@ export default function App() {
                     </PublicOnly>
                   }
                 />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/set-password" element={<SetPasswordPage />} />
 
                 {/* ---------- Authenticated ---------- */}

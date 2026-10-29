@@ -46,6 +46,11 @@ function timeAgoShort(time) {
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
 
+function previewFor(conversation) {
+  const last = [...(conversation.messages ?? [])].reverse().find((m) => m.content);
+  return String(last?.content ?? 'No messages yet').replace(/\s+/g, ' ').trim();
+}
+
 /** Bottom sheet on mobile, centered panel on desktop. */
 function Sheet({ open, onClose, title, children }) {
   if (!open) return null;
@@ -124,6 +129,7 @@ export default function AiChatPage() {
   const [customModelPrompt, setCustomModelPrompt] = useState(null); // {baseUrl, apiKey, modelId}
   const [customModelInput, setCustomModelInput] = useState('');
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const historyOwner = auth.profile?.id || auth.profile?.email || 'anonymous';
 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -151,6 +157,7 @@ export default function AiChatPage() {
     }
     const firstUser = persistable.find((m) => m.role === 'user')?.content;
     chatHistory.upsert(
+      historyOwner,
       makeConversation({
         id,
         title: titleFor(firstUser ?? 'New chat'),
@@ -266,19 +273,19 @@ export default function AiChatPage() {
   // --- History sheet --------------------------------------------------------
 
   const openHistorySheet = () => {
-    setHistoryList(chatHistory.loadAll());
+    setHistoryList(chatHistory.loadAll(historyOwner));
     setSheet('history');
   };
 
   const removeConversation = (conversation) => {
-    chatHistory.delete(conversation.id);
+    chatHistory.delete(historyOwner, conversation.id);
     if (conversation.id === conversationIdRef.current) startNewChat();
-    setHistoryList(chatHistory.loadAll());
+    setHistoryList(chatHistory.loadAll(historyOwner));
   };
 
   const removeAllConversations = () => {
     setConfirmDeleteAll(false);
-    chatHistory.deleteAll();
+    chatHistory.deleteAll(historyOwner);
     startNewChat();
     setHistoryList([]);
     toast.success('Chat history cleared');
@@ -532,7 +539,7 @@ export default function AiChatPage() {
                       filled={isActive}
                       className={isActive ? 'text-primary dark:text-primary-light' : 'text-ink-muted'}
                     />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span
                         className={`block truncate text-body-lg text-ink ${
                           isActive ? 'font-extrabold' : 'font-semibold'
@@ -540,8 +547,11 @@ export default function AiChatPage() {
                       >
                         {conversation.title}
                       </span>
-                      <span className="block text-label-sm text-ink-muted">
-                        {conversation.messages.length} messages • {timeAgoShort(conversation.updatedAt)}
+                      <span className="mt-0.5 block truncate text-label-sm text-ink-muted">
+                        {previewFor(conversation)}
+                      </span>
+                      <span className="mt-1 block text-label-sm text-ink-muted">
+                        {conversation.messages.length} messages · {timeAgoShort(conversation.updatedAt)}
                       </span>
                     </span>
                   </button>

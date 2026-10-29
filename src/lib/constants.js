@@ -83,7 +83,7 @@ export const SETUP_DEPARTMENTS = [
   'Materials and Metallurgical Engineering',
 ];
 
-export const SETUP_BATCHES = ['2020', '2021', '2022', '2023', '2024', '2025'];
+export const SETUP_BATCHES = ['20', '21', '22', '23', '24', '25'];
 export const SETUP_SECTIONS = ['A', 'B', 'C', 'D'];
 
 /** Parse a CUET student email into batch / department / roll. */
@@ -94,7 +94,7 @@ export function parseCuetEmail(rawEmail) {
   const [, batchCode, deptCode, roll] = match;
   return {
     batchCode,
-    batch: `20${batchCode}`,
+    batch: batchCode,
     departmentCode: deptCode,
     department: DEPARTMENT_CODES[deptCode] ?? `Unknown (${deptCode})`,
     roll: Number(roll),

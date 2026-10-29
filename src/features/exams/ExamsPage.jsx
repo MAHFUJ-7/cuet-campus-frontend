@@ -25,14 +25,16 @@ const toList = (payload) => {
 
 const TYPE_FILTERS = [
   { value: 'all', label: 'All' },
-  { value: 'midterm', label: 'MIDTERM' },
   { value: 'final', label: 'FINAL' },
+  { value: 'ct', label: 'CT' },
+  { value: 'quiz', label: 'QUIZ' },
+  { value: 'makeup', label: 'MAKEUP' },
+  { value: 'other', label: 'OTHER' },
   { value: 'quiz', label: 'QUIZ' },
   { value: 'makeup', label: 'MAKEUP' },
 ];
 
 const TYPE_TONES = {
-  midterm: 'bg-warning/15 text-warning',
   final: 'bg-critical/15 text-critical',
   quiz: 'bg-info/15 text-info',
   lab: 'bg-lab/15 text-lab',

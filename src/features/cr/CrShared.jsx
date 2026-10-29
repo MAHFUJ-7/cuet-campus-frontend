@@ -117,6 +117,7 @@ export const CR_ACTIONS = [
   { kind: 'room_change', icon: 'meeting_room', label: 'Change Room', description: 'Move a class to another room', tone: 'text-room-change bg-room-change/10' },
   { kind: 'time_change', icon: 'schedule', label: 'Change Time', description: 'Reschedule a class time', tone: 'text-accent bg-accent/10' },
   { kind: 'extra_class', icon: 'add_circle', label: 'Extra Class', description: 'Add a make-up class', tone: 'text-success bg-success/10' },
+  { kind: 'declare_ct', icon: 'quiz', label: 'Declare CT', description: 'Announce a class test for a course', tone: 'text-info bg-info/10' },
   { kind: 'permanent_routine', icon: 'edit', label: 'Permanent Routine Change', description: 'Edit a weekly class slot until changed again', tone: 'text-info bg-info/10' },
   { kind: 'conflicts', icon: 'fact_check', label: 'Find Time Conflicts', description: 'Scan classes and exams for time clashes', tone: 'text-warning bg-warning/10' },
   { kind: 'announcement', icon: 'campaign', label: 'Announcement', description: 'Post a notice to your section or whole batch — instantly in Updates.', tone: 'text-primary bg-primary/10 dark:text-primary-light', wide: true },

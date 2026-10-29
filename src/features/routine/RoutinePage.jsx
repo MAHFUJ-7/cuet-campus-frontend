@@ -430,7 +430,7 @@ function RoutinePdfPane() {
           <div className="min-w-0 flex-1">
             <p className="text-title-sm font-bold">Official Class Routine</p>
             <p className="text-label-sm text-white/75">
-              Level-3, Term-II · Batch 2022 · Effective 06/07/2026
+              Level-3, Term-II · Batch 22 · Effective 06/07/2026
             </p>
           </div>
           <a

@@ -35,12 +35,12 @@ import { isoDate } from '../../lib/datetime.js';
 import { isOfflineSession } from '../../lib/session.js';
 import { sectionIdOf } from './CoordinatorAcademicsPage.jsx';
 
-const toArray = (payload) =>
-  Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.data)
-      ? payload.data
-      : [];
+const toArray = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
 
 const INPUT_CLASS =
   'w-full rounded-xl border border-outline bg-surface px-3.5 py-2.5 text-body-md text-ink focus:border-primary focus:outline-none';
@@ -48,8 +48,11 @@ const INPUT_CLASS =
 const examIdOf = (exam) => String(exam?._id ?? exam?.id ?? '');
 
 const EXAM_TYPES = [
-  { value: 'midterm', label: 'Mid-term' },
   { value: 'final', label: 'Final' },
+  { value: 'ct', label: 'Class Test (CT)' },
+  { value: 'quiz', label: 'Quiz' },
+  { value: 'makeup', label: 'Make-up' },
+  { value: 'other', label: 'Other' },
 ];
 
 /** "HH:MM" → minutes since midnight, or null when out of range. */

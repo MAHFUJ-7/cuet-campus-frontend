@@ -18,7 +18,7 @@ const DEPARTMENTS = [
   'Physics',
   'Mathematics',
 ];
-const BATCHES = ['2020', '2021', '2022', '2023', '2024', '2025'];
+const BATCHES = ['20', '21', '22', '23', '24', '25'];
 const SECTIONS = ['A', 'B', 'C', 'D'];
 const SESSIONS = ['2020-21', '2021-22', '2022-23', '2023-24', '2024-25'];
 

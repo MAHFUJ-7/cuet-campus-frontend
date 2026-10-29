@@ -204,6 +204,9 @@ function extraEntry(record) {
   const startTime = record.startTime ?? payload.startTime ?? '';
   const endTime = record.endTime ?? payload.endTime ?? '';
   if (!startTime || !endTime) return null;
+  // A declared class test keeps its CT badge; regular make-up classes stay
+  // marked as lectures.
+  const classType = (record.classType ?? payload.classType) === 'ct' ? 'ct' : 'lecture';
 
   return {
     id: `extra-${record.localId ?? record.id ?? `${courseCode}-${startTime}`}`,
@@ -216,12 +219,14 @@ function extraEntry(record) {
     startTime,
     endTime,
     room: record.room ?? payload.room ?? null,
-    classType: 'lecture',
+    classType,
     isBreak: false,
     status: 'extra',
     source: 'extra',
     overrideType: 'extra_class',
-    overrideReason: String(record.reason ?? payload.reason ?? '') || 'Extra class',
+    overrideReason:
+      String(record.reason ?? payload.reason ?? '') ||
+      (classType === 'ct' ? 'Class test declared' : 'Extra class'),
     localDeclarationId: record.localId ?? null,
   };
 }

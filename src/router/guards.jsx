@@ -32,6 +32,11 @@ export function RequireAuth() {
       />
     );
   }
+  const needsAcademicSetup =
+    auth.profile?.roles?.includes('student') &&
+    !auth.profile?.section &&
+    location.pathname !== '/setup';
+  if (needsAcademicSetup) return <Navigate to="/setup" replace />;
   return (
     <Suspense fallback={<PageFallback />}>
       <Outlet />

@@ -1,6 +1,6 @@
 ﻿// Offline seed data â€” port of lib/core/data/offline_seed_data.dart.
 //
-// Built from the official Level-3 Term-II (Batch 2022) routine,
+// Built from the official Level-3 Term-II (Batch 22) routine,
 // Academic Year 2025-26, effective 06/07/2026.
 //   Section A â€” Room 3403      Section B â€” Room 3305
 //   Academic Building-3 (2nd Floor). Labs on 5th floor.
@@ -28,8 +28,8 @@ export const seedBatch = {
   id: 'batch-2022',
   departmentId: 'dept-cse',
   batchNumber: 22,
-  label: 'Batch 2022',
-  name: 'Batch 2022',
+  label: 'Batch 22',
+  name: 'Batch 22',
   startYear: 2022,
   endYear: 2026,
 };
@@ -575,7 +575,7 @@ export const coordinatorQuality = () => ({
       id: 'quality-1',
       severity: 'medium',
       title: 'No CR assigned',
-      detail: 'Section B (Batch 2022) has no course representative.',
+      detail: 'Section B (Batch 22) has no course representative.',
     },
     {
       id: 'quality-2',
@@ -601,7 +601,7 @@ export const coordinatorExams = () => [
     id: 'exam-2',
     courseId: { id: 'cse-345', code: 'CSE-345', title: 'Artificial Intelligence', credits: 3 },
     sectionId: { id: 'section-b', name: 'B', label: 'Section B' },
-    examType: 'Midterm',
+    examType: 'Final',
     examDate: isoDaysAhead(12),
     startTime: '10:00',
     endTime: '12:00',
