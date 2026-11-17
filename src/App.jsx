@@ -29,7 +29,6 @@ const RoutineConflictsPage = lazy(
 const UpdatesPage = lazy(() => import('./features/updates/UpdatesPage.jsx'));
 const AiChatPage = lazy(() => import('./features/ai/AiChatPage.jsx'));
 const AiSettingsPage = lazy(() => import('./features/ai/AiSettingsPage.jsx'));
-const AiRecommendationsPage = lazy(() => import('./features/ai/AiRecommendationsPage.jsx'));
 const ProfilePage = lazy(() => import('./features/profile/ProfilePage.jsx'));
 const ProfileEditPage = lazy(() => import('./features/profile/ProfileEditPage.jsx'));
 const SecurityPage = lazy(() => import('./features/profile/SecurityPage.jsx'));
@@ -54,6 +53,9 @@ const CoordinatorStudentsPage = lazy(
   () => import('./features/coordinator/CoordinatorStudentsPage.jsx')
 );
 const CoordinatorExamsPage = lazy(() => import('./features/coordinator/CoordinatorExamsPage.jsx'));
+const CoordinatorRoutineProposalsPage = lazy(
+  () => import('./features/coordinator/CoordinatorRoutineProposalsPage.jsx')
+);
 const CoordinatorQualityPage = lazy(
   () => import('./features/coordinator/CoordinatorQualityPage.jsx')
 );
@@ -70,10 +72,8 @@ const SectionManagementPage = lazy(
 const ScheduleSuggestionsPage = lazy(
   () => import('./features/coordinator/ScheduleSuggestionsPage.jsx')
 );
-const AdminPage = lazy(() => import('./features/admin/AdminPage.jsx'));
 const AssignmentsPage = lazy(() => import('./features/assignments/AssignmentsPage.jsx'));
 const ExamsPage = lazy(() => import('./features/exams/ExamsPage.jsx'));
-const AttendancePage = lazy(() => import('./features/attendance/AttendancePage.jsx'));
 const DirectoryPage = lazy(() => import('./features/directory/DirectoryPage.jsx'));
 const CalendarPage = lazy(() => import('./features/calendar/CalendarPage.jsx'));
 const EventsPage = lazy(() => import('./features/events/EventsPage.jsx'));
@@ -173,7 +173,7 @@ export default function App() {
                     <Route path="/profile/edit" element={<ProfileEditPage />} />
 
                     {/* CR area — keeps the app shell/sidebar visible */}
-                    <Route element={<RequireRole roles={['cr', 'coordinator', 'admin']} />}>
+                    <Route element={<RequireRole roles={['cr', 'coordinator']} />}>
                       <Route path="/cr-dashboard" element={<CrDashboardPage />} />
                       <Route path="/cr/compose" element={<ComposeUpdatePage />} />
                     </Route>
@@ -181,14 +181,12 @@ export default function App() {
 
                   {/* Student detail screens */}
                   <Route path="/assignments" element={<AssignmentsPage />} />
-                  <Route path="/attendance" element={<AttendancePage />} />
                   <Route path="/exams" element={<ExamsPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/events" element={<EventsPage />} />
                   <Route path="/study-materials" element={<StudyMaterialsPage />} />
                   <Route path="/directory" element={<DirectoryPage />} />
                   <Route path="/campus-map" element={<CampusMapPage />} />
-                  <Route path="/ai-recommendations" element={<AiRecommendationsPage />} />
                   <Route path="/ai-settings" element={<AiSettingsPage />} />
                   <Route path="/security" element={<SecurityPage />} />
                   <Route path="/notification-preferences" element={<NotificationPreferencesPage />} />
@@ -196,7 +194,7 @@ export default function App() {
                   <Route path="/dev-debug" element={<DevDebugPage />} />
 
                   {/* Coordinator area */}
-                  <Route element={<RequireRole roles={['coordinator', 'admin']} />}>
+                  <Route element={<RequireRole roles={['coordinator']} />}>
                     <Route element={<CoordinatorLayout />}>
                       <Route path="/coordinator" element={<CoordinatorHomePage />} />
                       <Route path="/coordinator/academics" element={<CoordinatorAcademicsPage />} />
@@ -205,6 +203,10 @@ export default function App() {
                     </Route>
                     <Route path="/coordinator/students" element={<CoordinatorStudentsPage />} />
                     <Route path="/coordinator/exams" element={<CoordinatorExamsPage />} />
+                    <Route
+                      path="/coordinator/routine-proposals"
+                      element={<CoordinatorRoutineProposalsPage />}
+                    />
                     <Route path="/coordinator/quality" element={<CoordinatorQualityPage />} />
                     <Route path="/coordinator/audit" element={<CoordinatorAuditPage />} />
                     <Route path="/coordinator/routine-pdf" element={<CoordinatorRoutinePdfPage />} />
@@ -220,10 +222,6 @@ export default function App() {
                     />
                   </Route>
 
-                  {/* Admin */}
-                  <Route element={<RequireRole roles={['admin']} />}>
-                    <Route path="/admin" element={<AdminPage />} />
-                  </Route>
                 </Route>
 
                 <Route path="*" element={<NotFoundPage />} />

@@ -9,11 +9,16 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Icon } from '../../components/ui/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { extractPayload } from '../../api/client.js';
-import { getAssignments, getDailyRoutine, getExams } from '../../api/endpoints.js';
+import { getAssignments, getCalendarDay, getDailyRoutine, getExams } from '../../api/endpoints.js';
 import { coordinatorExams, studentAssignments, studentRoutine } from '../../data/seedData.js';
 import { dayMatches, isoDate, todayName } from '../../lib/datetime.js';
 import { offlineCache } from '../../lib/offlineCache.js';
-import { parseAssignment, parseExamEntry, parseRoutineEntry } from '../../lib/models.js';
+import {
+  parseAssignment,
+  parseDaySchedule,
+  parseExamEntry,
+  parseRoutineEntry,
+} from '../../lib/models.js';
 import { applyRoutineOverrides } from '../../lib/routineOverrides.js';
 import { applyDayDeclarations } from '../../lib/crSchedule.js';
 import {
@@ -102,10 +107,11 @@ export default function ReminderHost() {
       ).map(parseAssignment);
 
       if (!auth.isOfflineSession) {
-        const [routineResult, examResult, assignmentResult] = await Promise.allSettled([
+        const [routineResult, examResult, assignmentResult, calendarResult] = await Promise.allSettled([
           getDailyRoutine(),
           getExams({ page: 1, limit: 50 }),
           getAssignments({ page: 1, limit: 100 }),
+          getCalendarDay(isoDate(new Date())),
         ]);
 
         if (routineResult.status === 'fulfilled') {
@@ -113,6 +119,18 @@ export default function ReminderHost() {
           if (list.length > 0) {
             routine = list;
             offlineCache.cacheRoutine(list);
+          }
+        }
+
+        // Prefer the date-aware calendar: it already includes server-side CR
+        // declarations (CT, extra class, room/time change), so reminders fire
+        // for every account, not just the CR's own browser.
+        if (calendarResult.status === 'fulfilled') {
+          const payload = extractPayload(calendarResult.value);
+          if (payload && Array.isArray(payload.classes)) {
+            const day = parseDaySchedule(payload);
+            routine = day.classes;
+            if (day.classes.length > 0) offlineCache.cacheRoutine(day.classes);
           }
         }
 

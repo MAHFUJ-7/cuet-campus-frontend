@@ -1,6 +1,6 @@
 // Student Home — port of home_screen.dart.
 // Sections: header → sync strip → Next Class → Today's Schedule → Upcoming →
-// Attendance → Assignments → Important Updates → AI tip → Quick Access.
+// Assignments → Important Updates → AI tip → Quick Access.
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -13,7 +13,6 @@ import { batchNumberLabel, updateScopeLabel } from '../../lib/models.js';
 import { groupRoutineEntries, periodRangeLabel } from '../../lib/routine.js';
 import { applyDayDeclarations } from '../../lib/crSchedule.js';
 import {
-  useAttendanceSummary,
   useHomeAssignmentsDue,
   useHomeData,
   useHomeExams,
@@ -331,22 +330,38 @@ function ScheduleTimeline({ entries, now }) {
 function DayStatusBanner({ state }) {
   if (!state || state.dayStatus === 'regular') return null;
   const midBreak = state.dayStatus === 'mid_break';
+  const ended = state.dayStatus === 'classes_ended';
+  const tone = midBreak
+    ? { card: 'border-violet/20 bg-violet/5', chip: 'bg-violet/15 text-violet' }
+    : ended
+      ? {
+          card: 'border-primary/25 bg-primary/5',
+          chip: 'bg-primary/15 text-primary dark:text-primary-light',
+        }
+      : { card: 'border-warning/20 bg-warning/5', chip: 'bg-warning/15 text-warning' };
   return (
-    <Card className={midBreak ? 'border-violet/20 bg-violet/5' : 'border-warning/20 bg-warning/5'}>
+    <Card className={tone.card}>
       <div className="flex items-start gap-3">
         <span
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-            midBreak ? 'bg-violet/15 text-violet' : 'bg-warning/15 text-warning'
-          }`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone.chip}`}
         >
-          <Icon name={midBreak ? 'beach_access' : 'event_busy'} size={19} />
+          <Icon
+            name={midBreak ? 'beach_access' : ended ? 'school' : 'event_busy'}
+            size={19}
+          />
         </span>
         <div className="min-w-0">
           <p className="text-title-sm font-bold text-ink">
-            {midBreak ? 'Mid-break in effect' : 'Day off declared'}
+            {midBreak
+              ? 'Mid-break in effect'
+              : ended
+                ? 'Classes ended — exam period'
+                : 'Day off declared'}
           </p>
           <p className="text-label-sm text-ink-muted">
-            No regular classes today.
+            {ended
+              ? 'Regular classes are over — final exam period.'
+              : 'No regular classes today.'}
             {state.declaration?.reason ? ` ${state.declaration.reason}` : ''}
           </p>
         </div>
@@ -382,47 +397,6 @@ function UpcomingExam({ exam }) {
             <p className="text-label-sm text-ink-muted">
               {dateLabel} • {exam.startTime}
               {exam.room ? ` • Room ${exam.room}` : ''}
-            </p>
-          </div>
-          <Icon name="chevron_right" size={18} className="text-ink-muted" />
-        </div>
-      </Card>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Attendance summary
-// ---------------------------------------------------------------------------
-
-function AttendanceSummary() {
-  const navigate = useNavigate();
-  const data = useAttendanceSummary();
-  if (!data || data.needsProfile || data.eligible === 0) return null;
-
-  const pct = data.percent ?? 0;
-  const tone = pct >= 85 ? 'success' : pct >= 75 ? 'warning' : 'danger';
-
-  return (
-    <>
-      <SectionHeader title="ATTENDANCE" />
-      <Card onClick={() => navigate('/attendance')}>
-        <div className="flex items-center gap-3">
-          <span
-            className={`flex h-11 w-11 items-center justify-center rounded-xl text-title-sm font-extrabold ${
-              tone === 'success'
-                ? 'bg-success/15 text-success'
-                : tone === 'warning'
-                  ? 'bg-warning/15 text-warning'
-                  : 'bg-danger/15 text-danger'
-            }`}
-          >
-            {pct.toFixed(0)}%
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-body-sm font-semibold text-ink">My Attendance • {data.level}</p>
-            <p className="text-label-sm text-ink-muted">
-              {data.present} present • {data.absent} absent
             </p>
           </div>
           <Icon name="chevron_right" size={18} className="text-ink-muted" />
@@ -529,9 +503,9 @@ function AiInsightCard() {
   const navigate = useNavigate();
   return (
     <FadeIn>
-      <div className="rounded-[20px] bg-gradient-to-br from-indigo-900 to-indigo-950 p-4 text-white">
+      <div className="rounded-[20px] bg-gradient-to-br from-teal-800 to-teal-950 p-4 text-white">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-indigo-200">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-teal-200">
             <Icon name="auto_awesome" size={16} />
           </span>
           <p className="text-title-sm font-semibold">AI Study Tip</p>
@@ -564,7 +538,6 @@ const QUICK_TILES = [
   { icon: 'quiz', label: 'Exams', route: '/exams', tone: 'text-danger bg-danger/10' },
   { icon: 'event_note', label: 'Calendar', route: '/calendar', tone: 'text-violet bg-violet/10' },
   { icon: 'celebration', label: 'Events', route: '/events', tone: 'text-accent bg-accent/10' },
-  { icon: 'auto_awesome', label: 'AI Insights', route: '/ai-recommendations', tone: 'text-violet bg-violet/10' },
 ];
 
 function QuickAccessGrid() {
@@ -710,7 +683,6 @@ export default function HomePage() {
           </div>
 
           {exams.length > 0 && <UpcomingExam exam={exams[0]} />}
-          <AttendanceSummary />
           <AssignmentsSummary />
           <ImportantUpdates updates={data?.updates ?? []} />
           <AiInsightCard />

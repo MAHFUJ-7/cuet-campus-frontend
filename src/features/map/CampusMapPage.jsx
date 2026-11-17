@@ -12,21 +12,46 @@ import {
   PageShell,
 } from '../../components/ui/index.jsx';
 
-const CUET_CENTER = [22.3698, 91.7834];
+// Real CUET position from the official share link:
+// https://maps.app.goo.gl/g62P1nrpznrhocxj6 → 22.462766, 91.971021 (Raozan, Chattogram).
+const CUET_CENTER = [22.462766, 91.971021];
 
+const CUET_GMAPS_URL = `https://www.google.com/maps/search/?api=1&query=${CUET_CENTER[0]},${CUET_CENTER[1]}`;
+
+// Landmark coordinates sourced from OpenStreetMap's mapped CUET campus
+// (Overpass API query around the center above) — real buildings, not
+// placeholders. Keep names/positions in sync with OSM when re-checking.
 const LOCATIONS = [
-  { name: 'Admin Building', position: [22.3698, 91.7834], category: 'academic', icon: 'account_balance', description: 'Main administrative building' },
-  { name: 'Library', position: [22.3705, 91.7828], category: 'facility', icon: 'local_library', description: 'Central library with study spaces' },
-  { name: 'CSE Department', position: [22.3688, 91.7842], category: 'academic', icon: 'computer', description: 'Computer Science & Engineering' },
-  { name: 'EEE Department', position: [22.3692, 91.7838], category: 'academic', icon: 'electrical_services', description: 'Electrical & Electronic Engineering' },
-  { name: 'Civil Department', position: [22.3702, 91.7845], category: 'academic', icon: 'construction', description: 'Civil Engineering' },
-  { name: 'Mechanical Department', position: [22.3708, 91.7832], category: 'academic', icon: 'settings', description: 'Mechanical Engineering' },
-  { name: 'Central Canteen', position: [22.3695, 91.7830], category: 'facility', icon: 'restaurant', description: 'Main student canteen' },
-  { name: 'Medical Center', position: [22.3710, 91.7825], category: 'facility', icon: 'local_hospital', description: 'Campus medical facility' },
-  { name: 'Student Center', position: [22.3690, 91.7835], category: 'facility', icon: 'group', description: 'Student activities center' },
-  { name: 'Mosque', position: [22.3698, 91.7840], category: 'facility', icon: 'mosque', description: 'Campus mosque' },
-  { name: 'Main Gate', position: [22.3680, 91.7834], category: 'other', icon: 'door_front', description: 'Main entrance gate' },
-  { name: 'Parking', position: [22.3685, 91.7828], category: 'other', icon: 'local_parking', description: 'Student parking area' },
+  // --- Academic buildings ---
+  { name: 'Admin Building', position: [22.46208, 91.972886], category: 'academic', icon: 'account_balance', description: 'CUET administrative building' },
+  { name: 'CSE Department', position: [22.463827, 91.974026], category: 'academic', icon: 'computer', description: 'Computer Science & Engineering' },
+  { name: 'Civil Department', position: [22.46247, 91.973714], category: 'academic', icon: 'construction', description: 'Civil Engineering department' },
+  { name: 'EME Building', position: [22.46384, 91.973573], category: 'academic', icon: 'electrical_services', description: 'Electrical & Mechanical Engineering building' },
+  { name: 'ME Workshop', position: [22.463707, 91.972882], category: 'academic', icon: 'settings', description: 'Mechanical engineering workshop' },
+  { name: 'Pre-Engg. Building', position: [22.462477, 91.97248], category: 'academic', icon: 'domain', description: 'Pre-engineering academic building' },
+  { name: 'East-West Gallery', position: [22.462194, 91.972462], category: 'academic', icon: 'meeting_room', description: 'Gallery connecting the academic buildings' },
+  { name: 'IT Business Incubator', position: [22.460822, 91.972675], category: 'academic', icon: 'lightbulb', description: 'Sheikh Kamal IT Business Incubator' },
+  { name: 'CUET Auditorium', position: [22.462015, 91.974151], category: 'academic', icon: 'slideshow', description: 'Central auditorium for events and seminars' },
+
+  // --- Facilities ---
+  { name: 'Central Library', position: [22.462347, 91.973181], category: 'facility', icon: 'local_library', description: 'CUET Central Library' },
+  { name: 'Central Mosque', position: [22.462764, 91.970593], category: 'facility', icon: 'mosque', description: 'Campus central mosque' },
+  { name: 'Medical Centre', position: [22.460819, 91.970792], category: 'facility', icon: 'local_hospital', description: 'CUET Medical Centre' },
+  { name: 'TSC', position: [22.462423, 91.970527], category: 'facility', icon: 'group', description: 'Teachers–Students Centre' },
+  { name: 'Canteen 3', position: [22.462782, 91.97456], category: 'facility', icon: 'restaurant', description: 'Main student canteen' },
+  { name: 'Gymnasium', position: [22.464092, 91.969798], category: 'facility', icon: 'place', description: 'Indoor gymnasium near the central field' },
+  { name: 'Central Field', position: [22.464924, 91.970241], category: 'facility', icon: 'place', description: 'Large open field of the campus' },
+  { name: 'School & College', position: [22.464897, 91.969111], category: 'facility', icon: 'school', description: 'CUET School & College' },
+
+  // --- Other landmarks ---
+  { name: 'Main Gate & Bus Stop', position: [22.459848, 91.971047], category: 'other', icon: 'door_front', description: 'Main entrance on CUET Main Road' },
+  { name: 'Goal Chattar', position: [22.461972, 91.97107], category: 'other', icon: 'hub', description: 'Central roundabout of the campus' },
+  { name: 'Post Office', position: [22.46028, 91.971685], category: 'other', icon: 'mail', description: 'Campus post office' },
+  { name: 'Shaheed Minar', position: [22.460185, 91.970702], category: 'other', icon: 'history_edu', description: 'Shaheed Minar memorial' },
+  { name: 'CUET Lake', position: [22.461331, 91.971731], category: 'other', icon: 'map', description: 'Campus lake' },
+  { name: 'Bangabandhu Mural', position: [22.462112, 91.970764], category: 'other', icon: 'image', description: 'Mural beside the central mosque' },
+  { name: 'QK Hall', position: [22.462756, 91.969355], category: 'other', icon: 'home', description: 'Q.K. Hall student dormitory' },
+  { name: 'Shahid Muhammad Shah Hall', position: [22.461576, 91.969472], category: 'other', icon: 'home', description: 'Student hall of residence' },
 ];
 
 const CATEGORY_COLORS = {
@@ -55,7 +80,8 @@ export default function CampusMapPage() {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return undefined;
     const map = L.map(containerRef.current, { zoomControl: false, attributionControl: true });
-    map.setView(CUET_CENTER, 16);
+    // Fit the whole campus on screen; the landmark set spans ~1 km.
+    map.fitBounds(L.latLngBounds(LOCATIONS.map((l) => l.position)), { padding: [40, 40], maxZoom: 16 });
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -121,6 +147,15 @@ export default function CampusMapPage() {
           <p className="text-title-sm font-bold text-ink">CUET Campus</p>
           <p className="text-body-sm text-ink-muted">Tap markers for location details</p>
         </Card>
+        <a
+          href={CUET_GMAPS_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="absolute bottom-3 left-3 z-[500] inline-flex items-center gap-1.5 rounded-full bg-surface/95 px-3 py-1.5 text-label-md font-semibold text-primary shadow-md backdrop-blur transition-colors hover:bg-surface dark:text-primary-light"
+        >
+          <Icon name="open_in_new" size={16} />
+          Directions
+        </a>
       </div>
 
       {/* Category filter */}

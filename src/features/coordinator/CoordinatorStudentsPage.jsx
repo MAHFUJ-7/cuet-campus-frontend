@@ -8,7 +8,6 @@ import {
   Button,
   Card,
   ConfirmDialog,
-  EmptyState,
   ErrorState,
   Icon,
   PageHeader,
@@ -96,36 +95,22 @@ export default function CoordinatorStudentsPage() {
       const sectionList = toArray(extractPayload(sectionsRes));
       setSections(sectionList);
 
-      // One broken section must never blank the whole roster — collect what
-      // loads and surface an honest partial-failure notice.
-      let failedSections = 0;
-      const rosters = await Promise.all(
-        sectionList.map(async (section) => {
-          const id = sectionIdOf(section);
-          try {
-            const response = await getCoordinatorStudents({ sectionId: id });
-            return toArray(extractPayload(response)).map((student) => ({
-              ...student,
-              _sectionId: id,
-              _sectionLabel: section.label ?? section.name ?? '',
-            }));
-          } catch {
-            failedSections += 1;
-            return [];
-          }
-        })
-      );
-
-      setStudents(rosters.flat());
+      // Batch-wide roster straight from the database — one request, and it
+      // includes students that no assignment rule has placed in a section
+      // yet, so nothing in the database is invisible.
+      const response = await getCoordinatorStudents();
+      const roster = toArray(extractPayload(response)).map((student) => ({
+        ...student,
+        _sectionId: studentSectionId(student),
+        _sectionLabel: studentSectionLabel(student, sectionList),
+      }));
+      setStudents(roster);
       setLoading(false);
-      if (failedSections > 0) {
-        toast.info(`${failedSections} section roster(s) could not be loaded`);
-      }
     } catch (loadError) {
       setError(describeApiError(loadError));
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     load();

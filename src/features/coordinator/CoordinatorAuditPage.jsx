@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   EmptyState,
   ErrorState,
-  Icon,
   PageHeader,
   PageShell,
   Spinner,

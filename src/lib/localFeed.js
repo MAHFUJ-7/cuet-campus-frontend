@@ -40,7 +40,7 @@ function updateBatch(update) {
 export function isUpdateVisibleTo(update, profile) {
   if (!update) return false;
   if (!profile) return false;
-  if (['coordinator', 'admin'].some((role) => profile.roles?.includes(role))) return true;
+  if (profile.roles?.includes('coordinator')) return true;
   if (update.authorId && String(update.authorId) === String(profile.id)) return true;
 
   const scope = update.scope ?? 'section';
@@ -105,10 +105,25 @@ export const localFeed = {
   },
 
   /** Records the server id once a local post has synced. */
-  markLocalUpdateSynced(localId, serverId) {
+  markLocalUpdateSynced(localId, serverId, attachments) {
     const list = this.getLocalUpdates().map((update) =>
       String(update.id) === String(localId)
-        ? { ...update, synced: true, serverId: String(serverId) }
+        ? {
+            ...update,
+            synced: true,
+            serverId: String(serverId),
+            // Swap bare filenames for the server's upload URLs so the
+            // attachment becomes openable everywhere.
+            ...(Array.isArray(attachments) && attachments.length > 0
+              ? {
+                  attachments: attachments
+                    .map((item) =>
+                      item && typeof item === 'object' ? item.url ?? item.name ?? '' : String(item)
+                    )
+                    .filter(Boolean),
+                }
+              : {}),
+          }
         : update
     );
     writeJson(KEYS.crLocalUpdates, list);
@@ -147,7 +162,20 @@ export const localFeed = {
   /** Records the server id once a local declaration has synced. */
   markLocalOverrideSynced(localId, serverId) {
     const list = this.getLocalOverrides().map((record) =>
-      record.localId === localId ? { ...record, synced: true, serverId: String(serverId) } : record
+      record.localId === localId
+        ? { ...record, synced: true, syncError: null, serverId: String(serverId) }
+        : record
+    );
+    writeJson(KEYS.crLocalOverrides, list);
+  },
+
+  /**
+   * Records why a declaration was refused by the server (HTTP 4xx) so the
+   * outbox retry stops pushing it — transient failures keep retrying instead.
+   */
+  markLocalOverrideError(localId, message) {
+    const list = this.getLocalOverrides().map((record) =>
+      record.localId === localId ? { ...record, syncError: String(message ?? 'Error') } : record
     );
     writeJson(KEYS.crLocalOverrides, list);
   },

@@ -6,9 +6,6 @@ import { apiClient, rawRequest, upload } from './client.js';
 // ---------------------------------------------------------------------------
 export const register = (data) => apiClient.post('/auth/register', data);
 export const login = (data) => apiClient.post('/auth/login', data);
-/** Dev-only: email in, session out with the account's real role. */
-export const devLogin = (email, options) =>
-  apiClient.post('/auth/dev-login', { email }, options);
 export const setPassword = (data) => apiClient.post('/auth/set-password', data);
 export const forgotPassword = (email) =>
   apiClient.post('/auth/forgot-password', { email });
@@ -52,6 +49,18 @@ export const createRoutine = (data) => apiClient.post('/routine', data);
 export const updateRoutine = (id, data) => apiClient.put(`/routine/${id}`, data);
 export const deleteRoutine = (id) => apiClient.delete(`/routine/${id}`);
 
+// Full weekly routine proposals: a CR builds the whole week and submits it
+// for coordinator review; approval publishes it as the section's routine.
+export const getRoutineProposals = ({ status } = {}) =>
+  apiClient.get('/routine-proposals', { query: status ? { status } : {} });
+export const submitRoutineProposal = (entries, sectionId) =>
+  apiClient.post('/routine-proposals', sectionId ? { entries, sectionId } : { entries });
+export const updateRoutineProposal = (id, entries) =>
+  apiClient.put(`/routine-proposals/${id}`, { entries });
+export const withdrawRoutineProposal = (id) => apiClient.delete(`/routine-proposals/${id}`);
+export const reviewRoutineProposal = (id, decision, note) =>
+  apiClient.put(`/routine-proposals/${id}/review`, { decision, note });
+
 // ---------------------------------------------------------------------------
 // Updates
 // ---------------------------------------------------------------------------
@@ -84,6 +93,8 @@ export const getExams = ({ page = 1, limit = 20, type, courseId } = {}) =>
 export const getExam = (id) => apiClient.get(`/exams/${id}`);
 export const createExam = (data) => apiClient.post('/exams', data);
 export const updateExam = (id, data) => apiClient.put(`/exams/${id}`, data);
+export const reviewExam = (id, decision, note) =>
+  apiClient.put(`/exams/${id}/review`, { decision, ...(note ? { note } : {}) });
 export const deleteExam = (id) => apiClient.delete(`/exams/${id}`);
 
 // ---------------------------------------------------------------------------
@@ -131,14 +142,27 @@ export const publishCoordinatorNotice = ({
   body,
   priority = 'normal',
   sectionId,
-}) =>
-  apiClient.post('/coordinator/notices', {
+  type = 'announcement',
+  eventDateTime,
+  eventLocation,
+  file,
+}) => {
+  const data = {
     audience,
     title,
     body,
     priority,
+    type,
     ...(sectionId ? { sectionId } : {}),
-  });
+    ...(eventDateTime ? { eventDateTime } : {}),
+    ...(eventLocation ? { eventLocation } : {}),
+  };
+  if (!file) return apiClient.post('/coordinator/notices', data);
+  const formData = new FormData();
+  formData.append('data', JSON.stringify(data));
+  formData.append('file', file);
+  return upload('/coordinator/notices', formData);
+};
 
 // Coordinator: student-ID-range assignment rules
 export const getAssignmentRules = ({ termId } = {}) =>
@@ -156,13 +180,6 @@ export const applyAssignmentRule = (id) =>
   apiClient.post(`/coordinator/assignment-rules/${id}/apply`);
 export const moveStudent = ({ studentId, targetSectionId }) =>
   apiClient.put('/coordinator/students/move', { studentId, targetSectionId });
-
-// ---------------------------------------------------------------------------
-// Admin
-// ---------------------------------------------------------------------------
-export const getAdminStats = () => apiClient.get('/admin/stats');
-export const getAuditLogs = ({ page = 1, limit = 20 } = {}) =>
-  apiClient.get('/admin/audit-logs', { query: { page, limit } });
 
 // ---------------------------------------------------------------------------
 // Notifications

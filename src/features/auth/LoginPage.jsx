@@ -1,5 +1,5 @@
-// Login screen — port of login_screen.dart.
-// Email/password login, quick test login and preset role cards.
+// Login screen — email/password sign-in only.
+// (The old dev quick-test login and preset role cards were removed.)
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { CuetBackground, Icon, Spinner, TextField } from '../../components/ui/index.jsx';
@@ -7,43 +7,6 @@ import { dashboardRouteForProfile, useAuth } from '../../context/AuthContext.jsx
 import { useToast } from '../../context/ToastContext.jsx';
 import { validateLoginEmail, validateLoginPassword } from '../../lib/validators.js';
 import { describeApiError } from '../../api/errors.js';
-
-const QUICK_PRESETS = [
-  {
-    id: 'student',
-    label: 'Student',
-    sublabel: 'Sec A • L3 T-II',
-    icon: 'school',
-    gradient: ['#3B82F6', '#1D4ED8'],
-    email: 'u2204001@student.cuet.ac.bd',
-    name: 'Demo Student',
-    section: 'A',
-    route: '/home',
-  },
-  {
-    id: 'cr',
-    label: 'CR',
-    sublabel: 'Sec B • L3 T-II',
-    icon: 'campaign',
-    gradient: ['#F59E0B', '#D97706'],
-    email: 'u2204002@student.cuet.ac.bd',
-    name: 'Demo CR',
-    section: 'B',
-    role: 'cr',
-    route: '/home',
-  },
-  {
-    id: 'coordinator',
-    label: 'Coordinator',
-    sublabel: 'CSE Dept',
-    icon: 'verified_user',
-    gradient: ['#8B5CF6', '#5B21B6'],
-    email: 'coordinator@cuet.ac.bd',
-    name: 'Demo Coordinator',
-    section: 'A',
-    route: '/coordinator',
-  },
-];
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -55,7 +18,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-  const [presetBusy, setPresetBusy] = useState(null);
 
   const showSnack = (message, isError = true) =>
     isError ? toast.error(message) : toast.success(message);
@@ -90,55 +52,6 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
-
-  /** Frictionless test login: tries the dev server, falls back to offline. */
-  const handleQuickLogin = async () => {
-    const value = email.trim();
-    if (!value || !value.includes('@')) {
-      showSnack('Enter your email above, then tap Quick Test Login');
-      return;
-    }
-    setLoading(true);
-    try {
-      const { reachedServer, profile } = await auth.quickTestLogin(value);
-      const label = profile?.roles?.length
-        ? profile.roles
-            .map((r) => ({ student: 'Student', cr: 'CR', coordinator: 'Coordinator', admin: 'Admin' })[r] ?? r)
-            .join(' + ')
-        : profile?.role ?? '';
-      showSnack(
-        reachedServer
-          ? `Signed in as ${label} (server)`
-          : `Offline test session as ${label} — server unreachable`,
-        false
-      );
-      finishLogin(profile);
-    } catch (err) {
-      showSnack(describeApiError(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /** One-tap demo login for a preset test account (fully offline). */
-  const handlePresetLogin = async (preset) => {
-    setPresetBusy(preset.id);
-    try {
-      await auth.signInOffline(preset.email, {
-        displayName: preset.name,
-        section: preset.section,
-        role: preset.role ?? null,
-      });
-      showSnack(`Signed in as ${preset.label} — Section ${preset.section}`, false);
-      navigate(preset.route, { replace: true });
-    } catch (err) {
-      showSnack(describeApiError(err));
-    } finally {
-      setPresetBusy(null);
-    }
-  };
-
-  const busy = loading || presetBusy != null;
 
   return (
     <CuetBackground asset="/images/cuet_admin.jpg" overlayOpacity={0.9}>
@@ -188,58 +101,12 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={busy}
+              disabled={loading}
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-title-md font-semibold text-white transition-colors hover:bg-primary-light disabled:opacity-60"
             >
-              {loading && presetBusy == null ? <Spinner size={20} /> : 'Sign In'}
+              {loading ? <Spinner size={20} /> : 'Sign In'}
             </button>
           </form>
-
-          {/* Dev quick login */}
-          <div className="mt-4">
-            <div className="flex items-center gap-3 text-primary">
-              <Icon name="bolt" size={14} />
-              <span className="whitespace-nowrap text-label-sm font-extrabold tracking-[0.12em]">
-                QUICK TEST LOGIN
-              </span>
-              <span className="h-px flex-1 bg-outline" />
-            </div>
-
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {QUICK_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => handlePresetLogin(preset)}
-                  className="group rounded-[18px] p-3 text-left text-white shadow-md transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-                  style={{
-                    background: `linear-gradient(135deg, ${preset.gradient[0]}, ${preset.gradient[1]})`,
-                    boxShadow: `0 4px 12px ${preset.gradient[1]}46`,
-                  }}
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20">
-                    {presetBusy === preset.id ? <Spinner size={16} /> : <Icon name={preset.icon} size={20} filled />}
-                  </span>
-                  <span className="mt-2 block truncate text-label-lg font-extrabold">{preset.label}</span>
-                  <span className="block truncate text-[9px] font-medium text-white/90">
-                    {preset.sublabel}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-1 text-center">
-              <button
-                type="button"
-                onClick={handleQuickLogin}
-                disabled={busy}
-                className="text-label-md font-medium text-ink-muted hover:text-ink disabled:opacity-50"
-              >
-                Use typed email instead
-              </button>
-            </div>
-          </div>
 
           <p className="mt-5 text-center text-body-md text-ink-muted">
             Don't have an account?{' '}

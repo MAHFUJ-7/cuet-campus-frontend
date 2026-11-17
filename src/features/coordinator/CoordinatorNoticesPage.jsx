@@ -2,7 +2,7 @@
 // Publish tab: scoped broadcast to one section or the whole managed batch,
 // with an audience preview before sending. Campus feed tab: read-only mirror
 // of what students currently see.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -59,9 +59,14 @@ function PublishPane({ termId }) {
   const [priority, setPriority] = useState('normal');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [isEvent, setIsEvent] = useState(false);
+  const [eventDateTime, setEventDateTime] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [file, setFile] = useState(null);
   const [errors, setErrors] = useState({});
   const [sending, setSending] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const fileRef = useRef(null);
 
   // Escape closes the audience preview.
   useEffect(() => {
@@ -149,6 +154,7 @@ function PublishPane({ termId }) {
     const nextErrors = {};
     if (!title.trim()) nextErrors.title = 'Required';
     if (!body.trim()) nextErrors.body = 'Required';
+    if (isEvent && !eventDateTime) nextErrors.eventDateTime = 'Required';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     if (!wholeBatch && !audienceSectionId) {
@@ -167,11 +173,19 @@ function PublishPane({ termId }) {
         body: body.trim(),
         priority,
         sectionId: wholeBatch ? null : audienceSectionId,
+        type: isEvent ? 'event' : 'announcement',
+        eventDateTime: isEvent ? eventDateTime : undefined,
+        eventLocation: isEvent ? eventLocation.trim() : undefined,
+        file,
       });
       toast.success('Notice published');
       setTitle('');
       setBody('');
       setPriority('normal');
+      setIsEvent(false);
+      setEventDateTime('');
+      setEventLocation('');
+      setFile(null);
       setPreviewOpen(false);
     } catch (error) {
       toast.error(describeApiError(error));
@@ -201,6 +215,62 @@ function PublishPane({ termId }) {
           error={errors.body}
         />
       </div>
+
+      <div className="mt-3">
+        <SwitchRow
+          icon="event"
+          title="Declare as an event"
+          subtitle="Add a scheduled time, venue, and optional PDF"
+          checked={isEvent}
+          onChange={setIsEvent}
+        />
+      </div>
+
+      {isEvent && (
+        <div className="mt-3 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField
+              label="Event date and time"
+              type="datetime-local"
+              value={eventDateTime}
+              onChange={(e) => setEventDateTime(e.target.value)}
+              error={errors.eventDateTime}
+            />
+            <TextField
+              label="Venue (optional)"
+              value={eventLocation}
+              onChange={(e) => setEventLocation(e.target.value)}
+              hint="e.g. Gallery 204"
+            />
+          </div>
+          <div className="rounded-2xl border border-outline/70 p-3">
+            <div className="flex items-center gap-2">
+              <Icon name="picture_as_pdf" size={18} className="text-cancellation" />
+              <span className="min-w-0 flex-1 truncate text-body-sm text-ink">
+                {file ? file.name : 'Optional event PDF'}
+              </span>
+              <Button variant="outlined" size="sm" onClick={() => fileRef.current?.click()}>
+                {file ? 'Change' : 'Choose PDF'}
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={(event) => {
+                  const selected = event.target.files?.[0] ?? null;
+                  event.target.value = '';
+                  if (selected && selected.type !== 'application/pdf' && !/\.pdf$/i.test(selected.name)) {
+                    toast.error('Only PDF files can be attached.');
+                    return;
+                  }
+                  setFile(selected);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <p className="mt-5 text-label-lg font-bold tracking-wide text-primary dark:text-primary-light">
         AUDIENCE

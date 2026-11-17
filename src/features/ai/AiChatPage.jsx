@@ -1,11 +1,10 @@
 // AI Chat — port of ai_chat_screen.dart (+ chat_history_service & chat notifier).
 // Messages persist per-conversation in localStorage; error bubbles are
 // display-only and never enter the model context.
-import { useEffect, useRef, useState } from 'react';
+import { Component, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ConfirmDialog,
-  EmptyState,
   Icon,
   IconButton,
   Spinner,
@@ -15,6 +14,40 @@ import { useToast } from '../../context/ToastContext.jsx';
 import { sendChatMessage } from '../../lib/ai/chatService.js';
 import { AiActiveMode, AiPresets, aiProvider } from '../../lib/ai/providers.js';
 import { chatHistory, makeConversation } from '../../lib/ai/chatHistory.js';
+import Markdown from '../../lib/ai/markdown.jsx';
+
+/**
+ * Keeps a render bug in one reply from white-screening the whole app — the
+ * broken bubble degrades to a plain-text fallback instead.
+ */
+class MessageBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('[ai-chat] message render failed:', error);
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-body-sm text-warning">
+          This reply could not be displayed. Raw text:
+          <span className="mt-1 block whitespace-pre-wrap break-words text-[var(--chat-body)]">
+            {String(this.props.fallbackText ?? '')}
+          </span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const SUGGESTIONS = [
   'What\u2019s my next class?',
@@ -46,9 +79,36 @@ function timeAgoShort(time) {
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
 
+/** ChatGPT-style recency grouping for the history sheet. */
+const HISTORY_GROUPS = ['Today', 'Yesterday', 'Previous 7 days', 'Previous 30 days', 'Older'];
+
+function historyGroupLabel(conversation) {
+  const updated = new Date(conversation.updatedAt).getTime();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const day = 86_400_000;
+  if (Number.isNaN(updated)) return 'Older';
+  if (updated >= startOfToday.getTime()) return 'Today';
+  if (updated >= startOfToday.getTime() - day) return 'Yesterday';
+  if (updated >= startOfToday.getTime() - 7 * day) return 'Previous 7 days';
+  if (updated >= startOfToday.getTime() - 30 * day) return 'Previous 30 days';
+  return 'Older';
+}
+
+function fixHistoryText(value) {
+  return String(value ?? '').replace(/\bconclict\b/gi, (match) =>
+    match[0] === match[0].toUpperCase() ? 'Conflict' : 'conflict'
+  );
+}
+
 function previewFor(conversation) {
   const last = [...(conversation.messages ?? [])].reverse().find((m) => m.content);
-  return String(last?.content ?? 'No messages yet').replace(/\s+/g, ' ').trim();
+  const raw = String(last?.content ?? 'No messages yet')
+    .replace(/```[\s\S]*?```/g, ' code snippet ')
+    .replace(/[*#`>|_]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return fixHistoryText(raw);
 }
 
 /** Bottom sheet on mobile, centered panel on desktop. */
@@ -62,7 +122,7 @@ function Sheet({ open, onClose, title, children }) {
       <div
         role="dialog"
         aria-modal="true"
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:rounded-2xl"
+        className="flex max-h-[85vh] w-full max-w-lg animate-fade-in-up flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-outline sm:hidden" />
@@ -75,35 +135,185 @@ function Sheet({ open, onClose, title, children }) {
   );
 }
 
+/** The little AI avatar shown next to every assistant reply (ChatGPT style). */
+function AssistantAvatar() {
+  return (
+    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F97316] to-[#C2410C] text-white shadow-sm">
+      <Icon name="auto_awesome" size={15} />
+    </span>
+  );
+}
+
 function Bubble({ message, onCopy }) {
   const isUser = message.role === 'user';
   const isError = message.isError;
 
+  if (isError) {
+    return (
+      <div className="flex justify-start">
+        <div className="flex max-w-[86%] items-start gap-2.5 rounded-2xl rounded-bl-md border border-critical/40 bg-critical/10 px-4 py-3 sm:max-w-[78%]">
+          <Icon name="error" size={18} className="mt-0.5 shrink-0 text-critical" />
+          <div className="min-w-0">
+            <p className="text-label-md font-bold uppercase tracking-wide text-critical">
+              Delivery failed
+            </p>
+            <p className="mt-0.5 break-words text-body-sm text-critical/90">{message.content}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isUser) {
+    return (
+      <div className="group flex items-end justify-end gap-2">
+        <button
+          type="button"
+          title="Copy"
+          onClick={onCopy}
+          className="rounded-lg p-1.5 text-[var(--chat-faint)] opacity-0 transition-opacity hover:text-[var(--chat-accent)] group-hover:opacity-100"
+        >
+          <Icon name="content_copy" size={15} />
+        </button>
+        <div className="max-w-[86%] rounded-3xl rounded-br-lg bg-gradient-to-br from-[#F97316] to-[#E05A0B] px-4 py-2.5 text-white shadow-md shadow-[#F97316]/20 sm:max-w-[75%]">
+          <div className="whitespace-pre-wrap break-words text-body-md">{message.content}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant replies run full width like ChatGPT — no bubble, real Markdown.
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[86%] px-4 pt-3 pb-1 sm:max-w-[78%] ${
-          isUser
-            ? 'rounded-2xl rounded-br-md bg-primary text-white'
-            : isError
-              ? 'rounded-2xl rounded-bl-md border border-critical/40 bg-critical/10 text-critical'
-              : 'rounded-2xl rounded-bl-md bg-surface-variant text-ink'
-        }`}
-      >
-        <div className="whitespace-pre-wrap break-words text-body-md">{message.content}</div>
-        <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className="group flex items-start gap-2.5">
+      <AssistantAvatar />
+      <div className="min-w-0 flex-1">
+        <MessageBoundary fallbackText={message.content}>
+          <Markdown>{message.content}</Markdown>
+        </MessageBoundary>
+        <div className="mt-1.5 flex items-center gap-1">
           <button
             type="button"
             title="Copy"
             onClick={onCopy}
-            className={`rounded-lg p-1 transition-colors ${
-              isUser ? 'text-white/70 hover:text-white' : 'text-ink-muted hover:text-ink'
-            }`}
+            className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-label-sm font-medium text-[var(--chat-faint)] transition-colors hover:bg-[var(--chat-hover)] hover:text-[var(--chat-accent)]"
           >
-            <Icon name="content_copy" size={15} />
+            <Icon name="content_copy" size={14} /> Copy
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** "Thinking…" indicator that matches the assistant bubble layout. */
+function TypingIndicator() {
+  return (
+    <div className="flex items-start gap-2.5">
+      <AssistantAvatar />
+      <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-[var(--chat-surface)] px-4 py-3.5">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--chat-accent)] [animation-delay:-0.32s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--chat-accent)] [animation-delay:-0.16s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--chat-accent)]" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Chat history list — grouped by recency (Today / Yesterday / Previous 7 days
+ * …) with a search filter, card-style rows and hover actions.
+ */
+function HistoryList({ conversations, query, activeId, onOpen, onDelete }) {
+  const needle = String(query ?? '').trim().toLowerCase();
+  const filtered = needle
+    ? conversations.filter((conversation) => {
+        const haystack = `${conversation.title ?? ''} ${previewFor(conversation)}`.toLowerCase();
+        return haystack.includes(needle);
+      })
+    : conversations;
+
+  const groups = HISTORY_GROUPS.map((label) => ({
+    label,
+    items: filtered.filter((conversation) => historyGroupLabel(conversation) === label),
+  })).filter((group) => group.items.length > 0);
+
+  if (groups.length === 0) {
+    return (
+      <div className="flex flex-col items-center px-6 py-10 text-center">
+        <Icon name="search" size={34} className="text-ink-muted/70" />
+        <p className="mt-3 text-title-md font-bold text-ink">No matching chats</p>
+        <p className="mt-1 text-body-sm text-ink-muted">Try a different search term.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 pb-4">
+      {groups.map((group) => (
+        <div key={group.label} className="mt-4 first:mt-2">
+          <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-muted/80">
+            {group.label}
+          </p>
+          <div className="space-y-1">
+            {group.items.map((conversation) => {
+              const isActive = conversation.id === activeId;
+              return (
+                <div
+                  key={conversation.id}
+                  className={`group flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-colors ${
+                    isActive
+                      ? 'border-primary/25 bg-primary/10 dark:border-primary-light/30 dark:bg-primary-light/10'
+                      : 'border-transparent hover:bg-surface-variant'
+                  }`}
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                      isActive
+                        ? 'bg-gradient-to-br from-[#F97316] to-[#C2410C] text-white'
+                        : 'bg-surface-variant text-ink-muted'
+                    }`}
+                  >
+                    <Icon
+                      name={isActive ? 'chat_bubble' : 'chat_bubble'}
+                      size={17}
+                      filled={isActive}
+                    />
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpen(conversation)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span
+                      className={`block truncate text-body-md ${
+                        isActive ? 'font-bold text-ink' : 'font-semibold text-ink'
+                      }`}
+                    >
+                      {fixHistoryText(conversation.title)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-label-md text-ink-muted">
+                      {previewFor(conversation)}
+                    </span>
+                  </button>
+
+                  <span className="shrink-0 text-label-sm text-ink-muted/80 group-hover:hidden">
+                    {timeAgoShort(conversation.updatedAt)}
+                  </span>
+                  <button
+                    type="button"
+                    title="Delete chat"
+                    onClick={() => onDelete(conversation)}
+                    className="hidden shrink-0 rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-danger/10 hover:text-danger group-hover:block"
+                  >
+                    <Icon name="delete" size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -125,6 +335,7 @@ export default function AiChatPage() {
 
   const [sheet, setSheet] = useState(null); // null | 'history' | 'model'
   const [historyList, setHistoryList] = useState([]);
+  const [historyQuery, setHistoryQuery] = useState('');
   const [modelPicker, setModelPicker] = useState(null); // {kind:'custom'|'gemini', ...}
   const [customModelPrompt, setCustomModelPrompt] = useState(null); // {baseUrl, apiKey, modelId}
   const [customModelInput, setCustomModelInput] = useState('');
@@ -274,6 +485,7 @@ export default function AiChatPage() {
 
   const openHistorySheet = () => {
     setHistoryList(chatHistory.loadAll(historyOwner));
+    setHistoryQuery('');
     setSheet('history');
   };
 
@@ -295,12 +507,13 @@ export default function AiChatPage() {
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-4xl flex-col px-4 pt-3 ${
+      className={`ai-chat-page flex w-full flex-col ${
         standalone
           ? 'h-[calc(100dvh-1rem)]'
           : 'h-[calc(100dvh-9.5rem)] lg:h-[calc(100dvh-2rem)]'
       }`}
     >
+      <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 pt-3">
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 pb-2">
         {standalone && (
@@ -309,19 +522,19 @@ export default function AiChatPage() {
         <button
           type="button"
           onClick={openModelSheet}
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 py-1 text-left transition-colors hover:bg-surface-variant"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-1 py-1 text-left transition-colors hover:bg-[var(--chat-hover)]"
           title="Switch model"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary dark:bg-primary-light/20 dark:text-primary-light">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]">
             <Icon name="auto_awesome" size={18} />
           </span>
           <span className="min-w-0">
-            <span className="block text-title-md font-bold text-ink">AI Assistant</span>
-            <span className="block truncate text-label-sm text-ink-muted">
+            <span className="block text-title-md font-bold text-[var(--chat-ink)]">AI Assistant</span>
+            <span className="block truncate text-label-sm text-[var(--chat-muted)]">
               {modelLabel}
             </span>
           </span>
-          <Icon name="expand_more" size={18} className="shrink-0 text-ink-muted" />
+          <Icon name="expand_more" size={18} className="shrink-0 text-[var(--chat-muted)]" />
         </button>
         <IconButton icon="history" label="Chat history" onClick={openHistorySheet} />
         <IconButton
@@ -341,14 +554,14 @@ export default function AiChatPage() {
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-3">
         {empty ? (
           <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-            <span className="flex h-20 w-20 animate-pulse items-center justify-center rounded-full bg-gradient-to-br from-[#2D5AA0] to-[#1A3A6B] shadow-lg shadow-primary/30">
+            <span className="flex h-20 w-20 animate-pulse items-center justify-center rounded-full bg-gradient-to-br from-[#F97316] to-[#C2410C] shadow-lg shadow-[#F97316]/25">
               <Icon name="auto_awesome" size={34} className="text-white" />
             </span>
-            <p className="mt-5 text-headline-sm font-semibold text-ink">CUET AI Assistant</p>
-            <p className="mt-1 text-label-md font-semibold text-primary dark:text-primary-light">
+            <p className="mt-5 text-headline-sm font-semibold text-[var(--chat-ink)]">CUET AI Assistant</p>
+            <p className="mt-1 text-label-md font-semibold text-[var(--chat-accent)]">
               {modelLabel}
             </p>
-            <p className="mt-2 max-w-md text-body-md text-ink-muted">
+            <p className="mt-2 max-w-md text-body-md text-[var(--chat-muted)]">
               Ask me anything about your academic schedule, campus facilities, or study tips.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -357,16 +570,16 @@ export default function AiChatPage() {
                   key={label}
                   type="button"
                   onClick={() => send(label)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-outline bg-surface px-3.5 py-2 text-label-md text-ink transition-colors hover:bg-surface-variant"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chat-border-strong)] bg-[var(--chat-surface-2)] px-3.5 py-2 text-label-md text-[var(--chat-body)] transition-colors hover:border-[var(--chat-accent-border)] hover:bg-[var(--chat-hover)]"
                 >
-                  <Icon name="auto_awesome" size={14} className="text-primary dark:text-primary-light" />
+                  <Icon name="auto_awesome" size={14} className="text-[var(--chat-accent)]" />
                   {label}
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <div className="space-y-3 px-0.5">
+          <div className="space-y-5 px-0.5">
             {messages.map((message, index) => (
               <Bubble
                 key={`${index}-${message.role}`}
@@ -374,18 +587,13 @@ export default function AiChatPage() {
                 onCopy={() => copyMessage(message)}
               />
             ))}
+            {isLoading && <TypingIndicator />}
           </div>
         )}
       </div>
 
-      {isLoading && (
-        <div className="h-0.5 w-full shrink-0 overflow-hidden rounded-full bg-primary/15">
-          <div className="h-full w-1/3 animate-loading-bar rounded-full bg-primary" />
-        </div>
-      )}
-
       {/* Composer */}
-      <div className="flex shrink-0 items-end gap-2 border-t border-outline/60 pt-3 pb-2">
+      <div className="flex shrink-0 items-end gap-2 border-t border-[var(--chat-border)] pt-3 pb-2">
         <textarea
           ref={inputRef}
           rows={Math.min(5, Math.max(1, input.split('\n').length))}
@@ -398,17 +606,18 @@ export default function AiChatPage() {
             }
           }}
           placeholder="Ask something..."
-          className="max-h-40 min-h-[46px] flex-1 resize-none rounded-3xl bg-surface-variant px-5 py-3 text-body-md text-ink placeholder:text-ink-muted/70 focus:outline-2 focus:outline-primary/40"
+          className="max-h-40 min-h-[46px] flex-1 resize-none rounded-3xl bg-[var(--chat-surface)] px-5 py-3 text-body-md text-[var(--chat-ink)] placeholder:text-[var(--chat-faint)] focus:outline-2 focus:outline-[var(--chat-accent)]/60"
         />
         <button
           type="button"
           onClick={() => send()}
           disabled={isLoading || !input.trim()}
           aria-label="Send"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary-light disabled:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#F97316] to-[#EA580C] text-white shadow-md shadow-[#F97316]/25 transition-all hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
         >
           {isLoading ? <Spinner size={20} /> : <Icon name="send" size={20} />}
         </button>
+      </div>
       </div>
 
       {/* Model picker sheet */}
@@ -491,80 +700,87 @@ export default function AiChatPage() {
 
       {/* History sheet */}
       <Sheet open={sheet === 'history'} onClose={() => setSheet(null)}>
-        <div className="flex items-center gap-1 px-4 pt-3 pb-1">
-          <p className="min-w-0 flex-1 text-title-lg font-extrabold text-ink">Chat history</p>
-          <button
-            type="button"
-            onClick={() => {
-              startNewChat();
-              setSheet(null);
-              inputRef.current?.focus();
-            }}
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-label-lg font-medium text-primary hover:bg-primary/10 dark:text-primary-light"
-          >
-            <Icon name="add_comment" size={17} /> New
-          </button>
-          <IconButton
-            icon="delete_sweep"
-            label="Delete all history"
-            disabled={historyList.length === 0}
-            onClick={() => setConfirmDeleteAll(true)}
-            className="text-danger"
-          />
-        </div>
-        {historyList.length === 0 ? (
-          <EmptyState icon="history" title="No saved chats yet" className="py-10" />
-        ) : (
-          <div className="divide-y divide-outline/60 pb-3">
-            {historyList.map((conversation) => {
-              const isActive = conversation.id === conversationId;
-              return (
-                <div
-                  key={conversation.id}
-                  className={`flex w-full items-center gap-2 px-4 py-2.5 ${
-                    isActive ? 'bg-primary/5' : ''
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      loadConversation(conversation);
-                      setSheet(null);
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  >
-                    <Icon
-                      name={isActive ? 'chat_bubble' : 'chat_bubble_outline'}
-                      size={20}
-                      filled={isActive}
-                      className={isActive ? 'text-primary dark:text-primary-light' : 'text-ink-muted'}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={`block truncate text-body-lg text-ink ${
-                          isActive ? 'font-extrabold' : 'font-semibold'
-                        }`}
-                      >
-                        {conversation.title}
-                      </span>
-                      <span className="mt-0.5 block truncate text-label-sm text-ink-muted">
-                        {previewFor(conversation)}
-                      </span>
-                      <span className="mt-1 block text-label-sm text-ink-muted">
-                        {conversation.messages.length} messages · {timeAgoShort(conversation.updatedAt)}
-                      </span>
-                    </span>
-                  </button>
-                  <IconButton
-                    icon="delete"
-                    label="Delete chat"
-                    onClick={() => removeConversation(conversation)}
-                    className="text-danger"
-                  />
-                </div>
-              );
-            })}
+        {/* Header */}
+        <div className="px-4 pt-4">
+          <div className="flex items-center gap-2">
+            <p className="flex min-w-0 flex-1 items-center gap-2 text-title-lg font-extrabold text-ink">
+              Chats
+              {historyList.length > 0 && (
+                <span className="rounded-full bg-surface-variant px-2 py-0.5 text-[10px] font-bold text-ink-muted">
+                  {historyList.length}
+                </span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                startNewChat();
+                setSheet(null);
+                inputRef.current?.focus();
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-label-lg font-semibold text-white shadow-sm transition-colors hover:bg-primary-light"
+            >
+              <Icon name="add_comment" size={16} /> New chat
+            </button>
+            <IconButton
+              icon="delete_sweep"
+              label="Delete all history"
+              disabled={historyList.length === 0}
+              onClick={() => setConfirmDeleteAll(true)}
+              className="shrink-0 text-danger"
+            />
           </div>
+
+          {/* Search */}
+          {historyList.length > 3 && (
+            <div className="relative mt-3">
+              <Icon
+                name="search"
+                size={17}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+              />
+              <input
+                value={historyQuery}
+                onChange={(e) => setHistoryQuery(e.target.value)}
+                placeholder="Search chats"
+                className="w-full rounded-xl bg-surface-variant py-2.5 pl-9 pr-3 text-body-md text-ink placeholder:text-ink-muted/70 focus:outline-2 focus:outline-primary/40"
+              />
+            </div>
+          )}
+        </div>
+
+        {historyList.length === 0 ? (
+          <div className="flex flex-col items-center px-6 py-12 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-variant">
+              <Icon name="history" size={30} className="text-ink-muted" />
+            </span>
+            <p className="mt-4 text-title-md font-bold text-ink">No saved chats yet</p>
+            <p className="mt-1 max-w-xs text-body-sm text-ink-muted">
+              Your conversations are saved on this device so you can pick up where you left off.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                startNewChat();
+                setSheet(null);
+                inputRef.current?.focus();
+              }}
+              className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-label-lg font-semibold text-white transition-colors hover:bg-primary-light"
+            >
+              <Icon name="add_comment" size={16} /> Start chatting
+            </button>
+          </div>
+        ) : (
+          <HistoryList
+            conversations={historyList}
+            query={historyQuery}
+            activeId={conversationId}
+            onOpen={(conversation) => {
+              loadConversation(conversation);
+              setSheet(null);
+            }}
+            onDelete={removeConversation}
+          />
         )}
       </Sheet>
 

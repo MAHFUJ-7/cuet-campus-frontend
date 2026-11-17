@@ -193,6 +193,7 @@ export default function CoordinatorHomePage() {
     { label: 'Students', icon: 'groups_2', to: '/coordinator/students' },
     { label: 'Sections & CRs', icon: 'account_tree', to: '/coordinator/academics' },
     { label: 'Exams', icon: 'quiz', to: '/coordinator/exams' },
+    { label: 'Routine proposals', icon: 'menu_book', to: '/coordinator/routine-proposals' },
     { label: 'Events', icon: 'event_note', to: '/events' },
     { label: 'Notices', icon: 'campaign', to: '/coordinator/notices' },
     { label: 'Quality', icon: 'rule_folder', to: '/coordinator/quality' },

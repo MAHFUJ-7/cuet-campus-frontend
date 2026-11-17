@@ -6,7 +6,6 @@ import {
   Card,
   EmptyState,
   ErrorState,
-  Icon,
   IconButton,
   PageHeader,
   PageShell,

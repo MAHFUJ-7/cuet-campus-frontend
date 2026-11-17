@@ -9,7 +9,6 @@ import {
   useState,
 } from 'react';
 import {
-  devLogin as apiDevLogin,
   getProfile as apiGetProfile,
   login as apiLogin,
   register as apiRegister,
@@ -24,19 +23,12 @@ import {
   setAuthToken,
 } from '../api/client.js';
 import { describeApiError } from '../api/errors.js';
-import { OFFLINE_SESSION_TOKEN, parseCuetEmail } from '../lib/constants.js';
+import { OFFLINE_SESSION_TOKEN } from '../lib/constants.js';
 import { parseUserProfile, profileHasPermission, profileHasRole, roleLabel } from '../lib/models.js';
 import { offlineCache } from '../lib/offlineCache.js';
 import { localFeed } from '../lib/localFeed.js';
-import { chatHistory } from '../lib/ai/chatHistory.js';
 import { setSelectedTermId } from '../features/coordinator/coordinatorState.js';
 import { useToast } from './ToastContext.jsx';
-import {
-  enrichProfile,
-  studentAssignments,
-  studentRoutine,
-  studentUpdates,
-} from '../data/seedData.js';
 
 const AuthContext = createContext(null);
 
@@ -49,40 +41,7 @@ function isUnauthorized(error) {
 /** Post-login destination for any profile (safe to call before context updates). */
 export function dashboardRouteForProfile(profile) {
   if (profileHasRole(profile, 'coordinator')) return '/coordinator';
-  if (profileHasRole(profile, 'admin')) return '/admin';
   return '/home';
-}
-
-/** Default offline permissions for a set of roles (BackendAuth._defaultPermissions). */
-function defaultPermissions(roles) {
-  const perms = [
-    'student.read.schedule',
-    'student.read.exam',
-    'student.read.notice',
-    'student.use.ai',
-  ];
-  if (roles.includes('cr')) {
-    perms.push(
-      'cr.create.notice',
-      'cr.declare.auto',
-      'cr.declare.mid_break',
-      'cr.update.class',
-      'cr.update.room',
-      'cr.update.time',
-      'cr.schedule.extra_class'
-    );
-  }
-  if (roles.includes('coordinator')) {
-    perms.push(
-      'coordinator.manage.students',
-      'coordinator.manage.sections',
-      'coordinator.manage.crs',
-      'coordinator.review.updates',
-      'coordinator.review.overrides'
-    );
-  }
-  if (roles.includes('admin')) perms.push('admin.manage.all');
-  return perms;
 }
 
 export function AuthProvider({ children }) {
@@ -164,92 +123,7 @@ export function AuthProvider({ children }) {
     }
   }, [refreshProfile]);
 
-  /**
-   * Fully offline test sign-in: builds the session locally from the email —
-   * no server contact. Student and CR accounts share the same official email
-   * format (u2204037@student.cuet.ac.bd); the preset card passes the role
-   * explicitly because the address no longer encodes it.
-   *
-   * Legacy dev addresses still work for backwards compatibility:
-   *   cr*        -> student + cr
-   *   *coord*    -> coordinator
-   *   dev@/admin -> admin
-   */
-  const signInOffline = useCallback(
-    async (rawEmail, { displayName = null, section = 'A', role = null } = {}) => {
-      const email = String(rawEmail ?? '').trim().toLowerCase();
-      const localPart = email.split('@')[0] || email;
-      const requestedRole = String(role ?? '').trim().toLowerCase();
-
-      let primaryRole = 'student';
-      const roles = ['student'];
-
-      if (requestedRole === 'cr') {
-        if (!roles.includes('cr')) roles.push('cr');
-      } else if (requestedRole === 'coordinator') {
-        primaryRole = 'coordinator';
-        roles.splice(0, roles.length, 'student', 'coordinator');
-      } else if (requestedRole === 'admin') {
-        primaryRole = 'admin';
-        roles.splice(0, roles.length, 'student', 'admin');
-      } else if (localPart.startsWith('cr')) {
-        if (!roles.includes('cr')) roles.push('cr');
-      } else if (localPart.includes('coord') || localPart.includes('coordinator')) {
-        primaryRole = 'coordinator';
-        roles.splice(0, roles.length, 'student', 'coordinator');
-      } else if (localPart === 'dev' || localPart.startsWith('admin')) {
-        primaryRole = 'admin';
-        roles.splice(0, roles.length, 'student', 'admin');
-      }
-
-      const derivedName = localPart
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim()
-        .split(' ')
-        .filter(Boolean)
-        .map((word) => word[0].toUpperCase() + word.slice(1))
-        .join(' ');
-
-      const parsedEmail = parseCuetEmail(email);
-      const studentIdMatch = localPart.match(/\d{4,}/);
-
-      let profile = {
-        id: `offline-${localPart}`,
-        email,
-        name: displayName?.trim()
-          ? displayName.trim()
-          : parsedEmail
-            ? `Student ${parsedEmail.studentId}`
-            : derivedName || localPart,
-        photoUrl: null,
-        phone: '',
-        studentId: parsedEmail?.studentId ?? (studentIdMatch ? studentIdMatch[0] : ''),
-        role: primaryRole,
-        roles,
-        permissions: defaultPermissions(roles),
-        department: null,
-        batch: null,
-        section: null,
-        academicSession: null,
-        hasPassword: false,
-      };
-
-      // Enrich with academic context and seed demo data for offline use.
-      profile = enrichProfile(profile, { section });
-      offlineCache.cacheRoutine(studentRoutine({ section }));
-      offlineCache.cacheWeeklyRoutine(studentRoutine({ section }));
-      offlineCache.cacheUpdates(studentUpdates({ section }));
-      offlineCache.cacheAssignments(studentAssignments({ section }));
-
-      setAuthToken(OFFLINE_SESSION_TOKEN);
-      offlineCache.cacheUser(profile);
-      setState({ initialized: true, loggedIn: true, offline: true, profile });
-      return profile;
-    },
-    []
-  );
-
-  /** Dev-mode email/password login (backend issues a token directly). */
+  /** Email/password login (backend issues a token directly). */
   const signInWithEmail = useCallback(
     async (email, password) => {
       const response = await apiLogin({ email, password });
@@ -281,31 +155,6 @@ export function AuthProvider({ children }) {
       return signInWithEmail(email, password);
     },
     [signInWithEmail]
-  );
-
-  /**
-   * Quick test login: tries the dev server first (4s budget); when it cannot
-   * be reached, falls back to a fully offline session.
-   */
-  const quickTestLogin = useCallback(
-    async (rawEmail) => {
-      const email = String(rawEmail ?? '').trim();
-      try {
-        const response = await apiDevLogin(email, { timeoutMs: 4000 });
-        const payload = extractPayload(response);
-        const token = payload?.customToken ?? payload?.token;
-        if (token) {
-          setAuthToken(token);
-          const profile = await adoptSession();
-          return { reachedServer: true, profile };
-        }
-        throw new Error('no token');
-      } catch {
-        const profile = await signInOffline(email);
-        return { reachedServer: false, profile };
-      }
-    },
-    [adoptSession, signInOffline]
   );
 
   /** Applies a local-only profile edit (offline sessions). */
@@ -395,15 +244,12 @@ export function AuthProvider({ children }) {
       isStudent: profileHasRole(profile, 'student'),
       isCR: profileHasRole(profile, 'cr'),
       isCoordinator: profileHasRole(profile, 'coordinator'),
-      isAdmin: profileHasRole(profile, 'admin'),
       isStudentAndCR: profileHasRole(profile, 'student') && profileHasRole(profile, 'cr'),
       roleLabel: roleLabel(profile),
       /** Student and Student+CR both go to /home (CR tools layered on top). */
       dashboardRoute: () => dashboardRouteForProfile(profile),
       signInWithEmail,
       signUpWithEmail,
-      quickTestLogin,
-      signInOffline,
       adoptSession,
       refreshProfile,
       updateProfileLocal,
@@ -415,8 +261,6 @@ export function AuthProvider({ children }) {
     state,
     signInWithEmail,
     signUpWithEmail,
-    quickTestLogin,
-    signInOffline,
     adoptSession,
     refreshProfile,
     updateProfileLocal,

@@ -19,6 +19,46 @@ const OVERRIDE_TITLES = {
   time_change: 'Time changed',
 };
 
+/** Guards against the outbox retry running concurrently on re-mounts. */
+let outboxBusy = false;
+
+/**
+ * Server sync for one declaration payload. Returns the server ids on success,
+ * throws the ApiError otherwise.
+ */
+async function syncOverrideToServer(payload) {
+  // Local-only matching/display fields are stripped so a strict backend
+  // validator never rejects the request.
+  const {
+    courseCode,
+    courseTitle,
+    originalStartTime,
+    originalEndTime,
+    originalRoom,
+    routineEntryIds,
+    ...serverPayload
+  } = payload;
+  const response = await createOverride(serverPayload);
+  const body = extractPayload(response) ?? response?.data;
+  const serverId =
+    body && typeof body === 'object' ? body.id ?? body._id ?? body.overrideId : null;
+  const updateId = body && typeof body === 'object' ? body.updateId ?? body.update ?? null : null;
+  return { serverId, updateId };
+}
+
+/**
+ * HTTP 4xx is a permanent failure — the declaration itself is invalid, so an
+ * automatic retry would never succeed. Connection problems stay queued.
+ */
+function isPermanentSyncError(error) {
+  const status = Number(error?.status ?? 0);
+  return status >= 400 && status < 500 && status !== 408;
+}
+
+function describeSyncError(error) {
+  return error?.userMessage ?? String(error?.message ?? error);
+}
+
 function describePayloadRange(payload) {
   if (payload.startDate) {
     return overrideRangeLabel({
@@ -43,6 +83,44 @@ export function useCrCenter(profile) {
   const loadDeclarations = useCallback(async () => {
     setLoadingDeclarations(true);
     setError(null);
+
+    // Outbox retry: push declarations whose earlier server sync failed (e.g.
+    // the server was down when the CR declared) so classmates stop missing
+    // them. Permanent rejections are marked and never retried blindly.
+    if (!outboxBusy && !isOfflineSession()) {
+      const queued = localFeed
+        .getLocalOverrides()
+        .filter((record) => !record.synced && !record.syncError && record.payload);
+      if (queued.length > 0) {
+        outboxBusy = true;
+        try {
+          for (const record of queued) {
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              const { serverId, updateId } = await syncOverrideToServer(record.payload);
+              if (serverId) {
+                localFeed.markLocalOverrideSynced(record.localId, serverId);
+                localFeed.markLocalUpdateSynced(record.localId, updateId || serverId);
+              }
+            } catch (error) {
+              if (isPermanentSyncError(error)) {
+                try {
+                  localFeed.markLocalOverrideError(record.localId, describeSyncError(error));
+                } catch {
+                  /* non-critical */
+                }
+              }
+              // Transient failures stay queued for the next refresh.
+            }
+          }
+        } finally {
+          // Always release the guard — a surprise throw above must never
+          // deadlock the outbox for the rest of the session.
+          outboxBusy = false;
+        }
+      }
+    }
+
     const storedLocal = localFeed.getLocalOverrides();
     setLocalOverrides(storedLocal);
     try {
@@ -93,7 +171,9 @@ export function useCrCenter(profile) {
       approvedCount:
         declarations.filter((item) => item.status === 'approved').length +
         localOverrides.filter((r) => local(r, 'status', 'approved')).length,
-      dayOffCount: declarations.filter((item) => item.type === 'auto_day_off').length,
+      dayOffCount:
+        declarations.filter((item) => item.type === 'auto_day_off').length +
+        localOverrides.filter((r) => local(r, 'type', 'auto_day_off')).length,
       midBreakCount:
         declarations.filter((item) => item.type === 'mid_break').length +
         localOverrides.filter((r) => local(r, 'type', 'mid_break')).length,
@@ -110,6 +190,12 @@ export function useCrCenter(profile) {
   const submitOverride = useCallback(
     async (payload, successContext) => {
       const localId = `loc-${Date.now()}_${payload.type}`;
+      // The declaration may be aimed at a sibling section (class changes,
+      // extra classes) — the target section, not the CR's own, decides which
+      // calendars and feeds see it.
+      const targetSectionId = payload.sectionId ?? profile?.section?.id ?? '';
+      const targetSectionName =
+        payload.sectionName ?? profile?.section?.name ?? profile?.section?.label ?? '';
 
       // 1) Instant local declaration record. Keep the full payload so every
       // screen can resolve the exact date / class without the backend.
@@ -122,8 +208,8 @@ export function useCrCenter(profile) {
           reason: String(payload.reason ?? ''),
           createdAt: new Date().toISOString(),
           synced: false,
-          sectionId: profile?.section?.id ?? '',
-          sectionName: profile?.section?.name ?? profile?.section?.label ?? '',
+          sectionId: targetSectionId,
+          sectionName: targetSectionName,
           departmentCode: profile?.department?.code ?? '',
           payload: { ...payload },
           date: payload.date ?? null,
@@ -154,8 +240,8 @@ export function useCrCenter(profile) {
         localFeed.postLocalUpdate({
           id: localId,
           authorId: profile?.id ?? '',
-          sectionId: profile?.section?.id ?? '',
-          sectionName: profile?.section?.name ?? profile?.section?.label ?? '',
+          sectionId: targetSectionId,
+          sectionName: targetSectionName,
           departmentCode: profile?.department?.code ?? '',
           type: payload.type,
           title:
@@ -173,39 +259,43 @@ export function useCrCenter(profile) {
         /* non-critical */
       }
 
-      // 3) Best-effort server sync. Local-only matching/display fields are
-      // stripped so a strict backend validator never rejects the request.
+      // 3) Server sync. Failures must never be reported as success: when the
+      // server is unreachable the declaration lives only on this device until
+      // the outbox retry pushes it, so the CR gets an honest status instead.
       let feedback;
-      try {
-        const {
-          courseCode,
-          courseTitle,
-          originalStartTime,
-          originalEndTime,
-          originalRoom,
-          routineEntryIds,
-          ...serverPayload
-        } = payload;
-        const response = await createOverride(serverPayload);
-        const body = extractPayload(response) ?? response?.data;
-        const serverId =
-          body && typeof body === 'object' ? body.id ?? body._id ?? body.overrideId : null;
-        if (serverId) {
+      if (!isOfflineSession()) {
+        try {
+          const { serverId, updateId } = await syncOverrideToServer(payload);
+          if (serverId) {
+            try {
+              localFeed.markLocalOverrideSynced(localId, serverId);
+              // The matching Updates post synced too — stop showing it twice.
+              // The server now creates its own feed post for the declaration, so
+              // point the local mirror at that post's id when it is available.
+              localFeed.markLocalUpdateSynced(localId, updateId || serverId);
+            } catch {
+              /* non-critical */
+            }
+            feedback = `${successContext} \u2014 synced to the section feed`;
+          } else {
+            feedback = `${successContext} \u2014 saved on this device; it reaches everyone once the connection returns`;
+          }
+        } catch (error) {
           try {
-            localFeed.markLocalOverrideSynced(localId, serverId);
-            // The matching Updates post synced too — stop showing it twice.
-            localFeed.markLocalUpdateSynced(localId, serverId);
+            if (isPermanentSyncError(error)) {
+              localFeed.markLocalOverrideError(localId, describeSyncError(error));
+              feedback = `${successContext} \u2014 saved on this device, but the server rejected it: ${describeSyncError(
+                error
+              )}`;
+            } else {
+              feedback = `${successContext} \u2014 saved on this device; it reaches everyone once the connection returns`;
+            }
           } catch {
-            /* non-critical */
+            feedback = `${successContext} \u2014 saved on this device; it reaches everyone once the connection returns`;
           }
         }
-        const message =
-          body && typeof body === 'object' && typeof body.message === 'string'
-            ? body.message
-            : 'Declaration submitted';
-        feedback = `${successContext} \u2014 ${message}`;
-      } catch {
-        feedback = `${successContext} \u2014 published to your section`;
+      } else {
+        feedback = `${successContext} \u2014 saved on this device (offline session)`;
       }
 
       try {
@@ -220,6 +310,19 @@ export function useCrCenter(profile) {
 
   const withdraw = useCallback(
     async (item) => {
+      if (isOfflineSession()) {
+        // Offline: drop the local mirror best-effort; the server cancel is
+        // retried by the outbox flow once the connection returns.
+        const match = localFeed
+          .getLocalOverrides()
+          .find((record) => String(record.serverId ?? '') === String(item.id));
+        if (match?.localId) {
+          localFeed.removeLocalOverride(match.localId);
+          localFeed.removeLocalUpdate(match.localId);
+        }
+        await loadDeclarations();
+        return;
+      }
       await cancelOverride(item.id);
       // Also drop the local mirror + its Updates post so nothing lingers.
       try {

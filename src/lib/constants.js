@@ -115,3 +115,26 @@ export function parseSetupEmail(rawEmail) {
     studentId: parsed.studentId,
   };
 }
+
+/**
+ * The official CUET period structure (Periods 1–9, Sunday–Thursday).
+ * Break (10:30–10:45) sits between periods 3 and 4; Lunch (13:00–13:45)
+ * between periods 6 and 7 — a single class can never span those gaps.
+ */
+export const PERIODS = [
+  { period: 1, startTime: '08:10', endTime: '09:00', label: '8:10 – 9:00' },
+  { period: 2, startTime: '09:00', endTime: '09:45', label: '9:00 – 9:45' },
+  { period: 3, startTime: '09:45', endTime: '10:30', label: '9:45 – 10:30' },
+  { period: 4, startTime: '10:45', endTime: '11:30', label: '10:45 – 11:30' },
+  { period: 5, startTime: '11:30', endTime: '12:15', label: '11:30 – 12:15' },
+  { period: 6, startTime: '12:15', endTime: '13:00', label: '12:15 – 1:00' },
+  { period: 7, startTime: '13:45', endTime: '14:30', label: '1:45 – 2:30' },
+  { period: 8, startTime: '14:30', endTime: '15:15', label: '2:30 – 3:15' },
+  { period: 9, startTime: '15:15', endTime: '16:00', label: '3:15 – 4:00' },
+];
+
+export const periodByNumber = (n) => PERIODS.find((p) => p.period === Number(n)) ?? null;
+
+/** True when [from, to] crosses the Break or Lunch gap. */
+export const periodRangeCrossesBreak = (from, to) =>
+  (from <= 3 && to >= 4) || (from <= 6 && to >= 7);

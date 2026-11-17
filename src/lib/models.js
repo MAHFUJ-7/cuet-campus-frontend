@@ -5,6 +5,20 @@ const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
 const idOf = (json) => str(json?._id) || str(json?.id);
 const asArray = (v) => (Array.isArray(v) ? v : []);
 
+// Attachments arrive either as plain strings (legacy) or as `{ url, name }`
+// objects from the upload endpoint. Stringifying an object yields
+// "[object Object]", so map to the openable URL (or the filename).
+const parseAttachments = (value) => {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((item) =>
+      item && typeof item === 'object'
+        ? str(item.url) || str(item.name)
+        : str(item)
+    )
+    .filter(Boolean);
+};
+
 // ---------------------------------------------------------------------------
 // User profile
 // ---------------------------------------------------------------------------
@@ -70,7 +84,6 @@ export function roleLabel(profile) {
   if (profileHasRole(profile, 'student')) labels.push('Student');
   if (profileHasRole(profile, 'cr')) labels.push('CR');
   if (profileHasRole(profile, 'coordinator')) labels.push('Coordinator');
-  if (profileHasRole(profile, 'admin')) labels.push('Admin');
   return labels.length ? labels.join(' + ') : profile.role.toUpperCase();
 }
 
@@ -265,9 +278,11 @@ export function parseCrUpdate(json) {
     scope: str(json.scope, 'section'),
     departmentCode,
     effectiveDate: json.effectiveDate ? new Date(json.effectiveDate) : null,
+    eventDateTime: json.eventDateTime ? new Date(json.eventDateTime) : null,
+    eventLocation: str(json.eventLocation),
     status: str(json.status, 'draft'),
     upvotes: Number(json.upvotes) || 0,
-    attachments: Array.isArray(json.attachments) ? json.attachments.map(String) : null,
+    attachments: parseAttachments(json.attachments),
     createdAt: new Date(str(json.createdAt) || 0),
     author,
     course:
@@ -312,7 +327,7 @@ export function parseAssignment(json) {
     deadline,
     priority: str(json.priority, 'medium'),
     status: str(json.status, 'not_started'),
-    attachments: Array.isArray(json.attachments) ? json.attachments.map(String) : null,
+    attachments: parseAttachments(json.attachments),
     createdAt: new Date(str(json.createdAt) || 0),
     course:
       json.courseId && typeof json.courseId === 'object'
@@ -341,7 +356,10 @@ export function parseDeclarationInfo(json) {
 }
 
 export function declarationLabel(declaration) {
-  return declaration?.type === 'mid_break' ? 'MID-BREAK' : 'AUTO / DAY OFF';
+  const type = declaration?.type;
+  if (type === 'mid_break') return 'MID-BREAK';
+  if (type === 'classes_end') return 'DL — CLASSES ENDED';
+  return 'AUTO / DAY OFF';
 }
 
 export function parseScheduleEntry(json) {
@@ -352,6 +370,10 @@ export function parseScheduleEntry(json) {
 
   return {
     id: idOf(json),
+    courseId:
+      json.courseId && typeof json.courseId === 'object'
+        ? idOf(json.courseId)
+        : str(json.courseId) || str(json.course?._id),
     day: str(json.day),
     period: Number(json.period) || 0,
     startTime: str(json.startTime),
@@ -418,6 +440,7 @@ export function parseRangeDay(json) {
     date: str(json.date),
     status: str(json.status, 'regular'),
     declarationId: str(json.declarationId) || null,
+    marks: asArray(json.marks).map(String),
   };
 }
 
@@ -431,6 +454,7 @@ export const OVERRIDE_TYPE_LABELS = {
   room_change: 'Room change',
   time_change: 'Time change',
   extra_class: 'Extra class',
+  classes_end: 'DL (Classes end)',
 };
 
 export const OVERRIDE_STATUS_LABELS = {
@@ -443,6 +467,20 @@ export const OVERRIDE_STATUS_LABELS = {
 export function parseScheduleOverride(json) {
   return {
     id: idOf(json),
+    sectionId:
+      json.sectionId && typeof json.sectionId === 'object'
+        ? idOf(json.sectionId)
+        : str(json.sectionId),
+    courseId:
+      json.courseId && typeof json.courseId === 'object'
+        ? idOf(json.courseId)
+        : str(json.courseId),
+    course:
+      json.courseId && typeof json.courseId === 'object'
+        ? parseCourseInfo(json.courseId)
+        : null,
+    routineEntryId: str(json.routineEntryId) || null,
+    classType: str(json.classType, 'lecture'),
     section: json.sectionId && typeof json.sectionId === 'object'
       ? parseSection(json.sectionId)
       : null,

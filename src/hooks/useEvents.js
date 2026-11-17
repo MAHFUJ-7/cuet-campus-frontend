@@ -17,7 +17,6 @@ export function useVisibleEvents() {
       auth.profile?.id,
       auth.profile?.section?.name,
       auth.isCoordinator,
-      auth.isAdmin,
       auth.isCR,
     ]
   );

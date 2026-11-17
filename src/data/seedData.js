@@ -77,7 +77,6 @@ const cse347 = { id: 'cse-347', code: 'CSE-347', title: 'Introduction to Mathema
 const cse355 = { id: 'cse-355', code: 'CSE-355', title: 'Software Engineering', credits: 3 };
 
 /** Class Test slot shown in the weekly grid. */
-const ctSlot = { id: 'ct-slot', code: 'CT', title: 'Class Test', credits: 0 };
 /** Combined sessional block "CSE-300/CSE-302" (shared 3-hour slot). */
 const cse300302 = { id: 'cse-300-302', code: 'CSE-300/CSE-302', title: 'S/W Development Project + Technical Writing (Sessional)', credits: 1.5 };
 /** Combined block "CSE-356/CSE-300" (Section B, shared slot). */
@@ -170,7 +169,7 @@ export function studentRoutine({ section = 'A' } = {}) {
       startTime: periodStart(period),
       endTime: periodEnd(period),
       room: roomOverride ?? room,
-      classType: course.id === 'ct-slot' ? 'ct' : classType,
+      classType,
       isBreak: false,
       breakType: null,
       course: { ...course },
@@ -188,8 +187,7 @@ export function studentRoutine({ section = 'A' } = {}) {
 
   if (sec.name === 'A') {
     // ---- SECTION A â€” Room 3403 ----
-    // SUN: CT | CSE-321 | CSE-347 | CSE-300/CSE-302 block | CSE-346 (A2)
-    add('Sunday', 1, ctSlot, null);
+    // SUN: CSE-321 | CSE-347 | CSE-300/CSE-302 block | CSE-346 (A2)
     add('Sunday', 2, cse321, tTista);
     add('Sunday', 3, cse347, tAnnesha);
     addBlock('Sunday', 4, 3, cse300302, tTista, roomA);
@@ -201,60 +199,52 @@ export function studentRoutine({ section = 'A' } = {}) {
     add('Monday', 5, cse355, tKowsar);
     add('Monday', 6, cse311, tRashadur);
 
-    // TUE: CT | CSE-347 | â€” | CSE-311 | CSE-355 | CSE-321 | CSE-312 (A1)
-    add('Tuesday', 1, ctSlot, null);
+    // TUE: CSE-347 | â€” | CSE-311 | CSE-355 | CSE-321 | CSE-312 (A1)
     add('Tuesday', 2, cse347, tAnnesha);
     add('Tuesday', 4, cse311, tRashadur);
     add('Tuesday', 5, cse355, tKowsar);
     add('Tuesday', 6, cse321, tTista);
     addBlock('Tuesday', 7, 3, cse312A1, tRashadur, labNetwork);
 
-    // WED: CT | â€” | CSE-311 | CSE-345 | CSE-355 | CSE-347 | CSE-312 (A2)
-    add('Wednesday', 1, ctSlot, null);
+    // WED: â€” | CSE-311 | CSE-345 | CSE-355 | CSE-347 | CSE-312 (A2)
     add('Wednesday', 3, cse311, tRashadur);
     add('Wednesday', 4, cse345, tAfroza);
     add('Wednesday', 5, cse355, tKowsar);
     add('Wednesday', 6, cse347, tAnnesha);
     addBlock('Wednesday', 7, 3, cse312A2, tRashadur, labNetwork);
 
-    // THU: CT | CSE-345 | CSE-321 | CSE-356
-    add('Thursday', 1, ctSlot, null);
+    // THU: CSE-345 | CSE-321 | CSE-356
     add('Thursday', 2, cse345, tAfroza);
     add('Thursday', 3, cse321, tTista);
     addBlock('Thursday', 4, 3, cse356A, tRefaj, labCompiler);
   } else {
     // ---- SECTION B â€” Room 3305 ----
-    // SUN: CT | CSE-347 | CSE-321 | CSE-346 (B1) | CSE-302
-    add('Sunday', 1, ctSlot, null);
+    // SUN: CSE-347 | CSE-321 | CSE-346 (B1) | CSE-302
     add('Sunday', 2, cse347, tAnnesha);
     add('Sunday', 3, cse321, tTista);
     addBlock('Sunday', 4, 3, cse346B1, tAyesha, labMultimedia);
     addBlock('Sunday', 7, 3, cse302, tArefin);
 
-    // MON: CT | â€” | â€” | CSE-311 | CSE-345 | CSE-355
-    add('Monday', 1, ctSlot, null);
+    // MON: â€” | â€” | CSE-311 | CSE-345 | CSE-355
     add('Monday', 4, cse311, tRashadur);
     add('Monday', 5, cse345, tAfroza);
     add('Monday', 6, cse355, tKowsar);
 
-    // TUE: CT | â€” | CSE-347 | CSE-321 | CSE-311 | CSE-355 | CSE-356/CSE-300
-    add('Tuesday', 1, ctSlot, null);
+    // TUE: â€” | CSE-347 | CSE-321 | CSE-311 | CSE-355 | CSE-356/CSE-300
     add('Tuesday', 3, cse347, tAnnesha);
     add('Tuesday', 4, cse321, tTista);
     add('Tuesday', 5, cse311, tRashadur);
     add('Tuesday', 6, cse355, tKowsar);
     addBlock('Tuesday', 7, 3, cse356300, tRefaj, labMultimedia);
 
-    // WED: CT | CSE-311 | â€” | CSE-347 | CSE-345 | CSE-355 | CSE-346 (B2)
-    add('Wednesday', 1, ctSlot, null);
+    // WED: CSE-311 | â€” | CSE-347 | CSE-345 | CSE-355 | CSE-346 (B2)
     add('Wednesday', 2, cse311, tRashadur);
     add('Wednesday', 4, cse347, tMaisha);
     add('Wednesday', 5, cse345, tAfroza);
     add('Wednesday', 6, cse355, tKowsar);
     addBlock('Wednesday', 7, 3, cse346B2, tAyesha, labMultimedia);
 
-    // THU: CT | CSE-321 | CSE-345 | CSE-312 (B2) | CSE-312 (B1)
-    add('Thursday', 1, ctSlot, null);
+    // THU: CSE-321 | CSE-345 | CSE-312 (B2) | CSE-312 (B1)
     add('Thursday', 2, cse321, tTista);
     add('Thursday', 3, cse345, tAfroza);
     addBlock('Thursday', 4, 3, cse312B2, tRashadur, labNetwork);

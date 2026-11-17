@@ -13,9 +13,12 @@ import {
   DeclareAutoDialog,
   DeclareCtDialog,
   DeclareMidBreakDialog,
+  ExamRoutineBuilderDialog,
   ExtraClassDialog,
+  WrapUpDialog,
 } from './CrDialogs.jsx';
 import PermanentRoutineDialog from './PermanentRoutineDialog.jsx';
+import ClassRoutineDialog from './ClassRoutineDialog.jsx';
 import { useCrCenter } from './useCrCenter.js';
 
 const DIALOG_ACTIONS = new Set([
@@ -26,7 +29,11 @@ const DIALOG_ACTIONS = new Set([
   'time_change',
   'extra_class',
   'declare_ct',
+  'wrap_up',
+  'exam_routine',
   'permanent_routine',
+  'class_routine_edit',
+  'class_routine_propose',
 ]);
 
 export default function CrDashboardPage() {
@@ -35,12 +42,13 @@ export default function CrDashboardPage() {
   const profile = auth.profile;
   const controller = useCrCenter(profile);
   const [flow, setFlow] = useState(null);
+  const [flowOption, setFlowOption] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const isClassChange =
     flow === 'class_cancellation' || flow === 'room_change' || flow === 'time_change';
 
-  const handleAction = (kind) => {
+  const handleAction = (kind, option = null) => {
     if (kind === 'announcement') {
       navigate('/cr/compose');
       return;
@@ -49,10 +57,16 @@ export default function CrDashboardPage() {
       navigate('/routine/conflicts');
       return;
     }
-    if (DIALOG_ACTIONS.has(kind)) setFlow(kind);
+    if (DIALOG_ACTIONS.has(kind)) {
+      setFlowOption(option);
+      setFlow(kind);
+    }
   };
 
-  const closeFlow = () => setFlow(null);
+  const closeFlow = () => {
+    setFlow(null);
+    setFlowOption(null);
+  };
 
   const refresh = async () => {
     setRefreshing(true);
@@ -142,7 +156,14 @@ export default function CrDashboardPage() {
           onClose={closeFlow}
           controller={controller}
           profile={profile}
+          assessmentKind={flowOption?.assessmentKind ?? 'ct'}
         />
+      )}
+      {flow === 'wrap_up' && (
+        <WrapUpDialog open onClose={closeFlow} controller={controller} />
+      )}
+      {flow === 'exam_routine' && (
+        <ExamRoutineBuilderDialog open onClose={closeFlow} controller={controller} profile={profile} />
       )}
       {flow === 'permanent_routine' && (
         <PermanentRoutineDialog
@@ -150,6 +171,14 @@ export default function CrDashboardPage() {
           onClose={closeFlow}
           profile={profile}
           section={profile?.section}
+        />
+      )}
+      {(flow === 'class_routine_edit' || flow === 'class_routine_propose') && (
+        <ClassRoutineDialog
+          open
+          onClose={closeFlow}
+          profile={profile}
+          initialTab={flow === 'class_routine_propose' ? 'propose' : 'edit'}
         />
       )}
     </PageShell>

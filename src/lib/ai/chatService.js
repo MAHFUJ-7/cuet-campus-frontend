@@ -315,7 +315,9 @@ export function buildSystemPrompt(profile, context = null) {
     'You are CUET AI Campus Assistant for Chittagong University of ' +
     `Engineering & Technology (CUET). You are helping ${identity}.\n` +
     'Answer questions about schedules, courses and study help. Be concise, ' +
-    'friendly and accurate. Use Markdown sparingly (plain text renders).\n' +
+    'friendly and accurate. Format every reply in clean Markdown: one short ' +
+    'direct answer first, then ### headings, **bold labels**, bullet lists, ' +
+    'and Markdown tables when listing classes, exams or notices.\n' +
     'Never invent instructors, rooms or dates that are not listed below.\n' +
     (routineText ? `\nSECTION WEEKLY ROUTINE:\n${routineText}\n` : '') +
     contextText

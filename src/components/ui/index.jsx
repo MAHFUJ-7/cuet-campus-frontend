@@ -21,7 +21,7 @@ export function Icon({ name, size = 24, filled = false, weight = 400, className 
         ...style,
       }}
     >
-      {codepoint ? String.fromCodePoint(codepoint) : name}
+      {codepoint ? String.fromCodePoint(codepoint) : null}
     </span>
   );
 }
@@ -35,7 +35,7 @@ const BTN_VARIANTS = {
   outlined: 'border border-outline text-ink hover:bg-surface-variant',
   text: 'text-primary hover:bg-primary/5',
   danger: 'bg-danger text-white hover:brightness-95',
-  gold: 'bg-gold text-primary-dark hover:bg-gold-light font-semibold',
+  gold: 'bg-gold text-[#1c1917] hover:bg-gold-light font-semibold',
 };
 
 const BTN_SIZES = {
@@ -440,7 +440,13 @@ export function SegmentedTabs({ tabs, value, onChange, className = '' }) {
 // Page scaffolding (web top bar for pushed screens)
 // ---------------------------------------------------------------------------
 export function PageShell({ children, className = '' }) {
-  return <div className={`mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 ${className}`}>{children}</div>;
+  return (
+    <div
+      className={`animate-fade-up mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 ${className}`}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function PageHeader({ title, subtitle = null, onBack = null, actions = null, className = '' }) {
@@ -653,11 +659,11 @@ export function CuetBackground({
   contentClassName = '',
 }) {
   const alpha = (a) => Math.round(a).toString(16).padStart(2, '0');
-  const top = `#1A3A6B${alpha(overlayOpacity * 235)}`;
-  const mid = `#1A3A6B${alpha(overlayOpacity * 205)}`;
-  const bottom = `#0A1628${alpha(overlayOpacity * 240)}`;
+  const top = `#18181b${alpha(overlayOpacity * 235)}`;
+  const mid = `#18181b${alpha(overlayOpacity * 205)}`;
+  const bottom = `#0a0a0c${alpha(overlayOpacity * 240)}`;
   return (
-    <div className={`relative h-full w-full overflow-hidden bg-[#12233F] ${className}`}>
+    <div className={`relative h-full w-full overflow-hidden bg-[#141519] ${className}`}>
       <img src={asset} alt="" className="absolute inset-0 h-full w-full object-cover" />
       <div
         className="absolute inset-0"
@@ -666,7 +672,7 @@ export function CuetBackground({
       {bottomGradient && (
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 h-56"
-          style={{ background: 'linear-gradient(to bottom, transparent, #0A1628a0)' }}
+          style={{ background: 'linear-gradient(to bottom, transparent, #0a0a0ca0)' }}
         />
       )}
       <div className={`relative h-full overflow-y-auto overscroll-contain ${contentClassName}`}>

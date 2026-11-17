@@ -33,7 +33,7 @@ export function ThemeProvider({ children }) {
     document.documentElement.classList.toggle('dark', isDark);
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark ? '#0A1628' : '#1A3A6B');
+    if (meta) meta.setAttribute('content', isDark ? '#0a0a0c' : '#f7f7f8');
   }, [isDark]);
 
   const setMode = useCallback((next) => {

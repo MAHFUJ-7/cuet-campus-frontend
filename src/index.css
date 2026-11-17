@@ -48,26 +48,28 @@
    Theme-aware surfaces (switch with the `.dark` class).
 --------------------------------------------------------------------------- */
 :root {
-  --bg: #f8fafc;
+  /* Light: warm paper neutrals that let the orange accent carry the brand. */
+  --bg: #f7f7f8;
   --surface: #ffffff;
-  --surface-variant: #f1f5f9;
+  --surface-variant: #f1f1f3;
   --surface-tint: #ffffff;
-  --ink: #0f172a;
-  --ink-muted: #64748b;
-  --outline: #e2e8f0;
-  --scrim: rgba(26, 58, 107, 0.78);
+  --ink: #18181b;
+  --ink-muted: #6e7686;
+  --outline: #e4e4e7;
+  --scrim: rgba(24, 24, 27, 0.82);
   color-scheme: light;
 }
 
 .dark {
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --surface-variant: #334155;
-  --surface-tint: #1e293b;
-  --ink: #f1f5f9;
-  --ink-muted: #94a3b8;
-  --outline: #334155;
-  --scrim: rgba(10, 22, 40, 0.82);
+  /* Dark: matches the AI chat surface exactly (#141519 cards on #0a0a0c). */
+  --bg: #0a0a0c;
+  --surface: #141519;
+  --surface-variant: #232327;
+  --surface-tint: #141519;
+  --ink: #f4f6fa;
+  --ink-muted: #8b93a3;
+  --outline: #26262b;
+  --scrim: rgba(10, 10, 12, 0.85);
   color-scheme: dark;
 }
 
@@ -88,13 +90,15 @@
   --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  /* Brand */
-  --color-primary: #1a3a6b;
-  --color-primary-light: #2d5aa0;
-  --color-primary-dark: #0f2345;
-  --color-gold: #d4a843;
-  --color-gold-light: #e8c96a;
-  --color-gold-dark: #b08a2e;
+  /* Brand — the same orange family as the AI chat (#F97316 gradients).
+     primary stays deep enough for white button text; primary-light is the
+     vivid accent used on dark surfaces, exactly like the chat. */
+  --color-primary: #ea580c;
+  --color-primary-light: #fb923c;
+  --color-primary-dark: #c2410c;
+  --color-gold: #f59e0b;
+  --color-gold-light: #fbbf24;
+  --color-gold-dark: #b45309;
   --color-accent: #3b82f6;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
@@ -118,6 +122,25 @@
   --color-lab: #22c55e;
   --color-sessional: #f59e0b;
   --color-tutorial: #8b5cf6;
+
+  /* Signature orange palette (user-selected, exam/term surfaces):
+     flame/safety/carrot carry gradients, cantaloupe/papaya-whip/melon are
+     soft glass tints, ginger/sienna give readable deep accents on light. */
+  --color-flame: #e25822;
+  --color-safety: #ff7800;
+  --color-carrot: #fd6f3b;
+  --color-dark-orange: #ff8c00;
+  --color-tangerine: #f28500;
+  --color-princeton: #f58025;
+  --color-burnt-sienna: #e97451;
+  --color-sienna: #a0522d;
+  --color-ginger: #b06500;
+  --color-marigold: #eaa221;
+  --color-cantaloupe: #ffd479;
+  --color-papaya-whip: #ffefd5;
+  --color-peach: #ffe5b4;
+  --color-melon: #febaad;
+  --color-light-salmon: #ffa07a;
 
   /* Typography scale (matches CuetTypography) */
   --text-display-lg: 2rem;
@@ -232,6 +255,18 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Hide scrollbars app-wide — the visible scroll line looked bad.
+   Scrolling itself still works (wheel, touch, keyboard, drag). */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+*::-webkit-scrollbar {
+  display: none; /* Chrome / Safari / Edge */
+  width: 0;
+  height: 0;
+}
+
 /* Material Symbols helper */
 .msr {
   font-family: "Material Symbols Outlined";
@@ -287,4 +322,494 @@ body {
 /* Safe area helpers for mobile bottom nav */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---------------------------------------------------------------------------
+   AI chat typography (ChatGPT-style reading experience)
+   A calmer, more neutral reading face than the Poppins UI font.
+--------------------------------------------------------------------------- */
+:root {
+  --font-chat: "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+.ai-md {
+  font-family: var(--font-chat);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--ink);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Consistent rhythm between sibling blocks; headings pull closer to their text. */
+.ai-md > * + * {
+  margin-top: 0.75em;
+}
+.ai-md h2,
+.ai-md h3,
+.ai-md h4 {
+  margin-top: 1.25em;
+}
+.ai-md > :first-child {
+  margin-top: 0;
+}
+
+.ai-md h2,
+.ai-md h3,
+.ai-md h4 {
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+.ai-md h2 {
+  font-size: 1.15em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--outline);
+}
+.ai-md h3 {
+  font-size: 1.06em;
+}
+.ai-md h4 {
+  font-size: 1em;
+}
+
+.ai-md p {
+  margin: 0;
+}
+
+.ai-md ul,
+.ai-md ol {
+  margin: 0;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+.ai-md ul {
+  list-style: disc;
+}
+.ai-md ol {
+  list-style: decimal;
+}
+.ai-md li::marker {
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+.dark .ai-md li::marker {
+  color: var(--color-primary-light);
+}
+.ai-md li > ul,
+.ai-md li > ol {
+  margin-top: 0.35em;
+}
+
+.ai-md strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ai-md a {
+  color: var(--color-primary-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ai-md a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Inline code */
+.ai-md code {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.85em;
+  background: rgba(45, 90, 160, 0.1);
+  border: 1px solid rgba(45, 90, 160, 0.14);
+  border-radius: 6px;
+  padding: 0.08em 0.38em;
+  white-space: pre-wrap;
+}
+.dark .ai-md code {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+/* Fenced code block — always dark, like ChatGPT */
+.ai-code {
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0d1526;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+.dark .ai-code {
+  background: #0a0f1c;
+}
+.ai-code__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45em 0.9em;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+.ai-code__lang {
+  font-family: var(--font-chat);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: #94a3b8;
+}
+.ai-code__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-family: var(--font-chat);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.2em 0.5em;
+  cursor: pointer;
+}
+.ai-code__copy:hover {
+  background: rgba(148, 163, 184, 0.15);
+  color: #f1f5f9;
+}
+.ai-code pre {
+  margin: 0;
+  padding: 0.85em 1em;
+  overflow-x: auto;
+}
+.ai-code pre code {
+  display: block;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  white-space: pre;
+}
+
+/* Blockquote */
+.ai-md blockquote {
+  margin: 0;
+  border-left: 3px solid var(--outline);
+  padding: 0.1em 0 0.1em 0.9em;
+  color: var(--ink-muted);
+}
+.ai-md blockquote p + p {
+  margin-top: 0.4em;
+}
+
+.ai-md hr {
+  border: 0;
+  border-top: 1px solid var(--outline);
+  margin: 0;
+}
+
+/* Tables */
+.ai-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+}
+.ai-md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875em;
+}
+.ai-md th,
+.ai-md td {
+  padding: 0.45em 0.7em;
+  text-align: left;
+  border-bottom: 1px solid var(--outline);
+  vertical-align: top;
+}
+.ai-md thead th {
+  background: rgba(45, 90, 160, 0.07);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dark .ai-md thead th {
+  background: rgba(148, 163, 184, 0.1);
+}
+.ai-md tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ai-md tbody tr:hover td {
+  background: rgba(45, 90, 160, 0.04);
+}
+.dark .ai-md tbody tr:hover td {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+/* ---------------------------------------------------------------------------
+   AI chat — orange accent, theme-aware
+   Dark:  pure black + ice-blue text (the original look, unchanged)
+   Light: warm paper surface + dark ink, same orange accent
+--------------------------------------------------------------------------- */
+.ai-chat-page {
+  --chat-bg: #000000;
+  --chat-ink: #f4f6fa; /* titles / strong text */
+  --chat-body: #d7e4f5; /* assistant body text */
+  --chat-muted: #8b93a3; /* secondary text */
+  --chat-faint: #6e7686; /* placeholders, copy icons */
+  --chat-surface: #141519; /* input, typing bubble */
+  --chat-surface-2: #101114; /* suggestion chips */
+  --chat-hover: #191a1e;
+  --chat-border: rgba(255, 255, 255, 0.1);
+  --chat-border-strong: rgba(255, 255, 255, 0.12);
+  --chat-accent: #fb923c;
+  --chat-accent-soft: rgba(249, 115, 22, 0.15);
+  --chat-accent-faint: rgba(249, 115, 22, 0.06);
+  --chat-accent-border: rgba(249, 115, 22, 0.5);
+  --chat-heading: #ffd9b5;
+  --chat-code-ink: #ffd9b5;
+  color-scheme: dark;
+}
+
+html:not(.dark) .ai-chat-page {
+  --chat-bg: #f7f7f8;
+  --chat-ink: #18181b;
+  --chat-body: #3f3f46;
+  --chat-muted: #6e7686;
+  --chat-faint: #71717a;
+  --chat-surface: #ffffff;
+  --chat-surface-2: #f1f1f3;
+  --chat-hover: #e9e9ec;
+  --chat-border: #e4e4e7;
+  --chat-border-strong: #dcdce0;
+  --chat-accent: #ea580c;
+  --chat-accent-soft: rgba(234, 88, 12, 0.12);
+  --chat-accent-faint: rgba(234, 88, 12, 0.05);
+  --chat-accent-border: rgba(234, 88, 12, 0.45);
+  --chat-heading: #c2410c;
+  --chat-code-ink: #9a3412;
+  color-scheme: light;
+}
+
+.ai-chat-page {
+  background: var(--chat-bg);
+  color: var(--chat-body);
+}
+
+/* Assistant reply text — a calm tone that contrasts the orange user bubbles. */
+.ai-chat-page .ai-md {
+  color: var(--chat-body);
+}
+
+.ai-chat-page .ai-md strong {
+  color: var(--chat-ink);
+}
+
+.ai-chat-page .ai-md h2,
+.ai-chat-page .ai-md h3,
+.ai-chat-page .ai-md h4 {
+  color: var(--chat-heading);
+}
+
+.ai-chat-page .ai-md h2 {
+  border-bottom-color: var(--chat-accent-border);
+}
+
+.ai-chat-page .ai-md a {
+  color: var(--chat-accent);
+}
+.ai-chat-page .ai-md a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.ai-chat-page .ai-md li::marker {
+  color: var(--chat-accent);
+}
+
+.ai-chat-page .ai-md code {
+  background: var(--chat-accent-soft);
+  border-color: var(--chat-accent-border);
+  color: var(--chat-code-ink);
+}
+
+.ai-chat-page .ai-md blockquote {
+  border-left-color: var(--chat-accent);
+  color: var(--chat-muted);
+}
+
+.ai-chat-page .ai-md hr {
+  border-top-color: var(--chat-border);
+}
+
+.ai-chat-page .ai-table-wrap {
+  border-color: var(--chat-border-strong);
+}
+
+.ai-chat-page .ai-md th,
+.ai-chat-page .ai-md td {
+  border-bottom-color: var(--chat-border);
+}
+
+.ai-chat-page .ai-md thead th {
+  background: var(--chat-accent-soft);
+  color: var(--chat-heading);
+}
+
+.ai-chat-page .ai-md tbody tr:hover td {
+  background: var(--chat-accent-faint);
+}
+
+/* ---------------------------------------------------------------------------
+   Motion — shared keyframes for a lively, app-like feel.
+   Everything respects prefers-reduced-motion.
+--------------------------------------------------------------------------- */
+@keyframes cuet-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    /* `none` (not translateY(0)) so the filled state leaves NO transform
+       behind — a lingering transform would turn the page into the containing
+       block for position:fixed modals and pin them to the page bottom. */
+    transform: none;
+  }
+}
+
+@keyframes cuet-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cuet-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cuet-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cuet-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-fade-up {
+  /* `backwards` (not `both`): after the entrance finishes no styles linger —
+     a filled transform would keep turning the page into the containing block
+     for position:fixed modals and pin them to the page bottom. */
+  animation: cuet-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.animate-fade-in {
+  animation: cuet-fade-in 0.35s ease-out backwards;
+}
+
+.animate-scale-in {
+  animation: cuet-scale-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.animate-slide-in-right {
+  animation: cuet-slide-in-right 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.animate-pulse-soft {
+  animation: cuet-pulse-soft 1.6s ease-in-out infinite;
+}
+
+.delay-1 {
+  animation-delay: 60ms;
+}
+.delay-2 {
+  animation-delay: 120ms;
+}
+.delay-3 {
+  animation-delay: 180ms;
+}
+.delay-4 {
+  animation-delay: 240ms;
+}
+.delay-5 {
+  animation-delay: 300ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-in,
+  .animate-scale-in,
+  .animate-slide-in-right,
+  .animate-pulse-soft {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Glassmorphism — frosted panels for dialogs, overlays and hero surfaces.
+   Theme-aware: sits on the token surfaces so light/dark both read well.
+--------------------------------------------------------------------------- */
+.glass {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid color-mix(in srgb, var(--outline) 55%, transparent);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 color-mix(in srgb, white 25%, transparent);
+}
+
+.glass-strong {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--outline) 65%, transparent);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+}
+
+/* Warm orange glass tint for exam/term hero surfaces. */
+.glass-ember {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #ff8c00 16%, var(--surface)),
+    color-mix(in srgb, #fd6f3b 10%, var(--surface)) 55%,
+    color-mix(in srgb, var(--surface) 92%, transparent)
+  );
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid color-mix(in srgb, #ff8c00 28%, transparent);
+  box-shadow: 0 8px 32px rgba(255, 140, 0, 0.1);
+}
+
+/* Orange gradient text for hero headings. */
+.text-ember-gradient {
+  background: linear-gradient(120deg, #ff8c00, #fd6f3b 55%, #e25822);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

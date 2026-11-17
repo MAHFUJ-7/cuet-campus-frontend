@@ -16,6 +16,8 @@ import { extractPayload } from '../../api/client.js';
 import { getStudyMaterials } from '../../api/endpoints.js';
 import { parseStudyMaterial } from '../../lib/models.js';
 import { useApi } from '../../hooks/useApi.js';
+import PdfViewerModal from '../../components/PdfViewerModal.jsx';
+import ImageViewerModal, { isImageAttachment } from '../../components/ImageViewerModal.jsx';
 
 const TYPE_FILTERS = ['all', 'notes', 'slides', 'book', 'video', 'other'];
 
@@ -55,12 +57,22 @@ export default function StudyMaterialsPage() {
     [materials, type]
   );
 
+  const [pdfView, setPdfView] = useState(null);
+  const [imageView, setImageView] = useState(null);
+
   const openMaterial = (material) => {
     if (!material.url) {
       toast.info('This material has no link attached.');
       return;
     }
-    window.open(material.url, '_blank', 'noopener,noreferrer');
+    // PDFs and images open in the in-app viewers instead of a new tab.
+    if (/\.pdf(?:$|[?#])/i.test(material.url)) {
+      setPdfView({ title: material.title ?? 'Study material', src: material.url });
+    } else if (isImageAttachment(material.url)) {
+      setImageView({ title: material.title ?? 'Study material', src: material.url });
+    } else {
+      window.open(material.url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   return (
@@ -132,6 +144,20 @@ export default function StudyMaterialsPage() {
           })}
         </div>
       )}
+
+      <PdfViewerModal
+        open={Boolean(pdfView)}
+        title={pdfView?.title ?? 'Study material'}
+        src={pdfView?.src ?? null}
+        onClose={() => setPdfView(null)}
+      />
+
+      <ImageViewerModal
+        open={Boolean(imageView)}
+        title={imageView?.title ?? 'Study material'}
+        src={imageView?.src ?? null}
+        onClose={() => setImageView(null)}
+      />
     </PageShell>
   );
 }

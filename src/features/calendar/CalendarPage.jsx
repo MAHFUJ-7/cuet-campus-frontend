@@ -103,14 +103,19 @@ function LegendItem({ tone, label }) {
 
 function DeclarationBanner({ schedule }) {
   const isBreak = schedule.dayStatus === 'mid_break';
+  const isEnded = schedule.dayStatus === 'classes_ended';
   const colorClasses = isBreak
     ? { text: 'text-warning', border: 'border-warning/40', gradient: 'from-warning/15 to-warning/5' }
-    : { text: 'text-critical', border: 'border-critical/40', gradient: 'from-critical/15 to-critical/5' };
+    : isEnded
+      ? { text: 'text-primary', border: 'border-primary/40', gradient: 'from-primary/15 to-primary/5' }
+      : { text: 'text-critical', border: 'border-critical/40', gradient: 'from-critical/15 to-critical/5' };
   const declaration = schedule.declaration;
 
   const rangeText = isBreak
     ? `${formatDmy(declaration?.startDate)} → ${formatDmy(declaration?.endDate)}`
-    : 'Declared by your section CR';
+    : isEnded
+      ? `Regular classes over from ${formatDmy(declaration?.startDate)}`
+      : 'Declared by your section CR';
 
   return (
     <div className={`mb-4 flex items-center gap-3 rounded-2xl border bg-gradient-to-br p-4 ${colorClasses.border} ${colorClasses.gradient}`}>
@@ -271,10 +276,17 @@ export default function CalendarPage() {
       const days = toList(payload?.days).map(parseRangeDay);
       const next = {};
       for (const day of days) {
-        if (day.status !== 'mid_break' && day.status !== 'auto_day_off') continue;
         const key = day.date;
         next[key] = next[key] ?? new Set();
-        next[key].add(day.status === 'mid_break' ? 'midBreak' : 'autoDayOff');
+        if (day.status === 'mid_break') next[key].add('midBreak');
+        else if (
+          day.status === 'auto_day_off' ||
+          day.status === 'classes_ended'
+        )
+          next[key].add('autoDayOff');
+        // One-off CR declarations (CT, extra class, room/time change) are
+        // reported by the server per day so they mark the grid too.
+        for (const mark of day.marks ?? []) next[key].add(mark);
       }
       setMarks(next);
     } catch {
@@ -486,6 +498,10 @@ export default function CalendarPage() {
                     {dayMarks.has('classChange') && (
                       <span className="h-1.5 w-1.5 rounded-full bg-room-change" />
                     )}
+                    {dayMarks.has('ct') && <span className="h-1.5 w-1.5 rounded-full bg-info" />}
+                    {dayMarks.has('extraClass') && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                    )}
                     {dayMarks.has('exam') && <span className="h-1.5 w-1.5 rounded-full bg-primary-light" />}
                     {dayMarks.has('event') && <span className="h-1.5 w-1.5 rounded-full bg-violet" />}
                   </span>
@@ -499,6 +515,8 @@ export default function CalendarPage() {
           <LegendItem tone="bg-warning" label="Mid-break" />
           <LegendItem tone="bg-critical" label="Auto / Off" />
           <LegendItem tone="bg-room-change" label="Class change" />
+          <LegendItem tone="bg-info" label="CT" />
+          <LegendItem tone="bg-success" label="Extra class" />
           <LegendItem tone="bg-primary-light" label="Exam" />
           <LegendItem tone="bg-violet" label="Event" />
         </div>
@@ -558,7 +576,9 @@ export default function CalendarPage() {
                 <p className="py-4 text-center text-body-md text-ink-muted">
                   {daySchedule.dayStatus === 'mid_break'
                     ? 'No classes during the break.'
-                    : 'No regular classes today.'}
+                    : daySchedule.dayStatus === 'classes_ended'
+                      ? 'Regular classes are over — final exam period.'
+                      : 'No regular classes today.'}
                 </p>
               )}
 

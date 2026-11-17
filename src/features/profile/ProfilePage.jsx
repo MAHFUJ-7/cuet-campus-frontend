@@ -116,7 +116,6 @@ export default function ProfilePage() {
   const profile = auth.profile;
   const isCR = auth.isCR;
   const isCoordinator = auth.isCoordinator;
-  const isAdmin = auth.isAdmin;
 
   // Refresh live profile when online (offline sessions stay local).
   useEffect(() => {
@@ -249,12 +248,6 @@ export default function ProfilePage() {
         <SectionTitle>Campus</SectionTitle>
         <Card padded={false} className="divide-y divide-outline/70 overflow-hidden">
           <SettingsTile
-            icon="fact_check"
-            title="My Attendance"
-            subtitle="Personal class tracker & percentages"
-            onClick={() => navigate('/attendance')}
-          />
-          <SettingsTile
             icon="map"
             title="Campus Map"
             subtitle="Explore CUET campus"
@@ -286,20 +279,12 @@ export default function ProfilePage() {
               onClick={() => navigate('/cr-dashboard')}
             />
           )}
-          {(isCoordinator || isAdmin) && (
+          {isCoordinator && (
             <SettingsTile
               icon="co_present"
               title="Coordinator Dashboard"
               subtitle="Sections, ID ranges, roster & approvals"
               onClick={() => navigate('/coordinator')}
-            />
-          )}
-          {isAdmin && (
-            <SettingsTile
-              icon="admin_panel_settings"
-              title="Admin Panel"
-              subtitle="System administration"
-              onClick={() => navigate('/admin')}
             />
           )}
         </Card>

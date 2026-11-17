@@ -133,6 +133,12 @@ export function declarationAppliesOn(record, date) {
     return Boolean(start && end && target >= start && target <= end);
   }
 
+  // Classes-end runs open-endedly: every day from the declared date on.
+  if (type === 'classes_end') {
+    const start = recordStartDate(record);
+    return Boolean(start) && target >= start;
+  }
+
   return recordDate(record) === target;
 }
 
@@ -262,7 +268,7 @@ export function applyDayDeclarations(
   const dayRecord = latest(
     all.filter((record) => {
       const type = typeOf(record);
-      return type === 'auto_day_off' || type === 'mid_break';
+      return type === 'auto_day_off' || type === 'mid_break' || type === 'classes_end';
     })
   );
 
@@ -270,7 +276,12 @@ export function applyDayDeclarations(
     const type = typeOf(dayRecord);
     return {
       entries: [],
-      dayStatus: type === 'mid_break' ? 'mid_break' : 'auto_day_off',
+      dayStatus:
+        type === 'mid_break'
+          ? 'mid_break'
+          : type === 'classes_end'
+            ? 'classes_ended'
+            : 'auto_day_off',
       declaration: declarationForBanner(dayRecord),
       declarations: all,
     };

@@ -1,6 +1,6 @@
 // Events — local-first academic event management.
 //
-// Coordinators/admins can publish campus-wide or section events; CRs can
+// Coordinators can publish campus-wide or section events; CRs can
 // publish section events; every student can keep personal events. Events are
 // stored on this device and appear immediately in the Academic Calendar.
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -15,7 +15,6 @@ import {
   PageShell,
   SegmentedTabs,
   Select,
-  TextField,
 } from '../../components/ui/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -24,18 +23,16 @@ import {
   canManageEvent,
   eventStore,
   isEventPast,
-  normalizeSectionName,
 } from '../../lib/eventStore.js';
 import { isoDate } from '../../lib/datetime.js';
 import { useVisibleEvents } from '../../hooks/useEvents.js';
 import EventCard from './EventCard.jsx';
+import EventForm from './EventForm.jsx';
 
 const TYPE_OPTIONS = Object.entries(EVENT_TYPES).map(([value, meta]) => ({
   value,
   label: meta.label,
 }));
-
-const SECTION_OPTIONS = ['A', 'B'].map((value) => ({ value, label: `Section ${value}` }));
 
 function addDaysKey(days) {
   const date = new Date();
@@ -44,55 +41,8 @@ function addDaysKey(days) {
   return isoDate(date);
 }
 
-function defaultAudience(auth) {
-  if (auth.isCoordinator || auth.isAdmin) return 'campus';
-  if (auth.isCR) return 'section';
-  return 'personal';
-}
-
-function EventDialog({ open, event, auth, onClose, onSaved }) {
-  const toast = useToast();
+function EventDialog({ open, event, auth, onClose }) {
   const dialogRef = useRef(null);
-  const manager = auth.isCoordinator || auth.isAdmin;
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState('academic');
-  const [startDate, setStartDate] = useState(addDaysKey(1));
-  const [endDate, setEndDate] = useState(addDaysKey(1));
-  const [startTime, setStartTime] = useState('10:00');
-  const [endTime, setEndTime] = useState('11:00');
-  const [location, setLocation] = useState('');
-  const [description, setDescription] = useState('');
-  const [audience, setAudience] = useState('campus');
-  const [sectionName, setSectionName] = useState('');
-  const [errors, setErrors] = useState({});
-
-  const sectionChoices = useMemo(() => {
-    const names = new Set(SECTION_OPTIONS.map((option) => option.value));
-    const fallback = normalizeSectionName(auth.profile?.section);
-    if (fallback) names.add(fallback);
-    if (event?.sectionName) names.add(event.sectionName);
-    return [...names].sort().map((value) => ({ value, label: `Section ${value}` }));
-  }, [auth.profile?.section, event?.sectionName]);
-
-  useEffect(() => {
-    if (!open) return;
-    const nextAudience = event?.audience ?? defaultAudience(auth);
-    setTitle(event?.title ?? '');
-    setType(event?.type ?? 'academic');
-    setStartDate(event?.startDate ?? addDaysKey(1));
-    setEndDate(event?.endDate ?? event?.startDate ?? addDaysKey(1));
-    setStartTime(event?.startTime ?? '10:00');
-    setEndTime(event?.endTime ?? '11:00');
-    setLocation(event?.location ?? '');
-    setDescription(event?.description ?? '');
-    setAudience(nextAudience);
-    setSectionName(
-      event?.sectionName ??
-        normalizeSectionName(auth.profile?.section) ??
-        (manager ? 'A' : '')
-    );
-    setErrors({});
-  }, [open, event, auth, manager]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -134,64 +84,9 @@ function EventDialog({ open, event, auth, onClose, onSaved }) {
 
   if (!open) return null;
 
-  const audienceOptions = manager
-    ? [
-        { value: 'campus', label: 'Campus-wide' },
-        { value: 'section', label: 'One section' },
-        { value: 'personal', label: 'Personal (only me)' },
-      ]
-    : auth.isCR
-      ? [
-          { value: 'section', label: `Section ${normalizeSectionName(auth.profile?.section) || ''}` },
-          { value: 'personal', label: 'Personal (only me)' },
-        ]
-      : [{ value: 'personal', label: 'Personal (only me)' }];
-
-  const submit = (submitEvent) => {
-    submitEvent.preventDefault();
-    const nextErrors = {};
-    if (!title.trim()) nextErrors.title = 'Give the event a title';
-    if (!startDate) nextErrors.startDate = 'Choose a start date';
-    if (endDate && startDate && endDate < startDate) {
-      nextErrors.endDate = 'End date cannot be before the start date';
-    }
-    if (startTime && endTime && endTime <= startTime) {
-      nextErrors.endTime = 'End time must be after the start time';
-    }
-    if (audience === 'section' && !sectionName) {
-      nextErrors.sectionName = 'Choose a section';
-    }
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
-
-    try {
-      eventStore.save(
-        {
-          id: event?.id,
-          title,
-          type,
-          startDate,
-          endDate: endDate || startDate,
-          startTime,
-          endTime,
-          location,
-          description,
-          audience,
-          sectionName,
-        },
-        auth
-      );
-      toast.success(event ? 'Event updated' : 'Event added to your calendar');
-      onSaved?.();
-      onClose();
-    } catch (error) {
-      toast.error(error?.message || 'Could not save the event');
-    }
-  };
-
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/45 p-4 py-8 sm:items-center"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
       onClick={onClose}
       role="presentation"
     >
@@ -200,10 +95,10 @@ function EventDialog({ open, event, auth, onClose, onSaved }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="event-dialog-title"
-        className="w-full max-w-xl rounded-2xl bg-surface shadow-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-3 border-b border-outline/60 p-5">
+        <div className="flex shrink-0 items-start gap-3 border-b border-outline/60 p-5">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet/10 text-violet">
             <Icon name="event_note" size={22} />
           </span>
@@ -218,113 +113,14 @@ function EventDialog({ open, event, auth, onClose, onSaved }) {
           <IconButton icon="close" label="Close" onClick={onClose} />
         </div>
 
-        <form className="space-y-3 p-5" onSubmit={submit}>
-          <TextField
-            label="Event title"
-            hint="e.g. CSE Project Showcase"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            error={errors.title}
-            required
-            autoFocus
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <EventForm
+            event={event}
+            auth={auth}
+            submitLabel={event ? 'Save changes' : 'Add event'}
+            onCancel={onClose}
           />
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Select
-              label="Event type"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              options={TYPE_OPTIONS}
-            />
-            <Select
-              label="Audience"
-              value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-              options={audienceOptions}
-            />
-          </div>
-
-          {audience === 'section' && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Select
-                label="Section"
-                value={sectionName}
-                onChange={(e) => setSectionName(e.target.value)}
-                options={sectionChoices}
-                error={errors.sectionName}
-                disabled={!manager}
-              />
-              {!manager && (
-                <p className="self-end pb-2 text-label-sm text-ink-muted">
-                  Section events are visible to everyone in your section.
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextField
-              label="Start date"
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                if (!endDate || endDate < e.target.value) setEndDate(e.target.value);
-              }}
-              error={errors.startDate}
-              required
-            />
-            <TextField
-              label="End date"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              error={errors.endDate}
-            />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextField
-              label="Start time"
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-            <TextField
-              label="End time"
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              error={errors.endTime}
-            />
-          </div>
-
-          <TextField
-            label="Location"
-            hint="e.g. Seminar Room, Academic Building"
-            icon="place"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-          />
-
-          <TextField
-            label="Description"
-            hint="Optional details, registration notes, agenda…"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            multiline
-            rows={3}
-          />
-
-          <div className="flex justify-end gap-2 border-t border-outline/60 pt-4">
-            <Button variant="text" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" icon="save">
-              {event ? 'Save changes' : 'Add event'}
-            </Button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -380,7 +176,15 @@ export default function EventsPage() {
     .filter((item) => typeFilter === 'all' || item.event.type === typeFilter)
     .map((item) => item.event);
 
+  const isManager = auth.isCoordinator;
+
+  // CRs compose events on the CR compose page (Event tab); coordinators and
+  // students use the local dialog here.
   const openCreate = () => {
+    if (auth.isCR && !isManager) {
+      navigate('/cr/compose?tab=event');
+      return;
+    }
     setEditing(null);
     setDialogOpen(true);
   };
@@ -505,7 +309,6 @@ export default function EventsPage() {
         event={editing}
         auth={auth}
         onClose={() => setDialogOpen(false)}
-        onSaved={() => {}}
       />
 
       <ConfirmDialog

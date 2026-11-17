@@ -7,11 +7,20 @@
 
 const periodOf = (entry) => Number(entry?.period) || 0;
 
+const courseKey = (entry) =>
+  String(
+    entry?.courseId ||
+      entry?.course?.id ||
+      entry?.course?._id ||
+      entry?.course?.code ||
+      ''
+  );
+
 const sameBlock = (a, b) => {
   if (!a || !b) return false;
   if (a.day !== b.day) return false;
   if (periodOf(b) !== periodOf(a) + 1) return false;
-  if (a.courseId !== b.courseId) return false;
+  if (courseKey(a) !== courseKey(b)) return false;
   if ((a.room ?? null) !== (b.room ?? null)) return false;
   if ((a.classType ?? 'lecture') !== (b.classType ?? 'lecture')) return false;
   if ((a.status ?? 'scheduled') !== (b.status ?? 'scheduled')) return false;

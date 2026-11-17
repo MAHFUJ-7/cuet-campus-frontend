@@ -1,5 +1,6 @@
 // Shared CR Center widgets — port of cr_center_widgets.dart.
-import { EmptyState, Icon, Spinner } from '../../components/ui/index.jsx';
+import { useEffect, useState } from 'react';
+import { Button, EmptyState, Icon, Spinner } from '../../components/ui/index.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { describeApiError } from '../../api/errors.js';
 import {
@@ -16,6 +17,7 @@ export const DECLARATION_ICONS = {
   room_change: 'meeting_room',
   time_change: 'schedule',
   extra_class: 'add_circle',
+  classes_end: 'event_busy',
 };
 
 export const declarationIcon = (type) => DECLARATION_ICONS[type] ?? 'add_circle';
@@ -110,50 +112,147 @@ export function CrScopeHero({ profile, sectionLabel, stats = [], refreshing = fa
 // Action grid
 // ---------------------------------------------------------------------------
 
-export const CR_ACTIONS = [
-  { kind: 'auto', icon: 'event_busy', label: 'Declare Day Off', description: 'Cancel every class for a date', tone: 'text-critical bg-critical/10' },
-  { kind: 'mid_break', icon: 'beach_access', label: 'Declare Mid-Break', description: 'Pause classes across a date range', tone: 'text-warning bg-warning/10' },
-  { kind: 'class_cancellation', icon: 'cancel_schedule_send', label: 'Cancel Class', description: 'Call off one specific class', tone: 'text-cancellation bg-cancellation/10' },
-  { kind: 'room_change', icon: 'meeting_room', label: 'Change Room', description: 'Move a class to another room', tone: 'text-room-change bg-room-change/10' },
-  { kind: 'time_change', icon: 'schedule', label: 'Change Time', description: 'Reschedule a class time', tone: 'text-accent bg-accent/10' },
-  { kind: 'extra_class', icon: 'add_circle', label: 'Extra Class', description: 'Add a make-up class', tone: 'text-success bg-success/10' },
-  { kind: 'declare_ct', icon: 'quiz', label: 'Declare CT', description: 'Announce a class test for a course', tone: 'text-info bg-info/10' },
-  { kind: 'permanent_routine', icon: 'edit', label: 'Permanent Routine Change', description: 'Edit a weekly class slot until changed again', tone: 'text-info bg-info/10' },
+// Grouped quick actions — related declarations share one entry point and
+// open a picker with the individual options.
+export const CR_ACTION_GROUPS = [
+  {
+    kind: 'group_off',
+    icon: 'event_busy',
+    label: 'Off & Cancellation',
+    description: 'Day off, mid-break or cancel a class',
+    tone: 'text-critical bg-critical/10',
+    options: [
+      { kind: 'auto', icon: 'event_busy', label: 'Declare Day Off', description: 'Cancel every class for a date' },
+      { kind: 'mid_break', icon: 'beach_access', label: 'Declare Mid-Break', description: 'Pause classes across a date range' },
+      { kind: 'class_cancellation', icon: 'cancel_schedule_send', label: 'Cancel Class', description: 'Call off one specific class' },
+    ],
+  },
+  {
+    kind: 'group_routine',
+    icon: 'edit',
+    label: 'Change Routine',
+    description: 'Time, room, extra class or permanent edits',
+    tone: 'text-accent bg-accent/10',
+    options: [
+      { kind: 'time_change', icon: 'schedule', label: 'Change Time', description: 'Reschedule a class time' },
+      { kind: 'room_change', icon: 'meeting_room', label: 'Change Room', description: 'Move a class to another room' },
+      { kind: 'extra_class', icon: 'add_circle', label: 'Extra Class', description: 'Add a make-up class' },
+      { kind: 'permanent_routine', icon: 'edit', label: 'Permanent Routine Change', description: 'Edit a weekly class slot until changed again' },
+    ],
+  },
+  {
+    kind: 'group_classroutine',
+    icon: 'calendar_month',
+    label: 'Class Routine',
+    description: 'Edit the weekly routine or submit a full routine for review',
+    tone: 'text-primary bg-primary/10 dark:text-primary-light',
+    options: [
+      { kind: 'class_routine_edit', icon: 'edit', label: 'Edit Weekly Routine', description: 'Change classes directly — publishes instantly, no approval needed' },
+      { kind: 'class_routine_propose', icon: 'menu_book', label: 'Submit Full Routine', description: 'Build the whole Sunday–Thursday week and send it for coordinator review' },
+    ],
+  },
+  {
+    kind: 'group_assessment',
+    icon: 'quiz',
+    label: 'Assessments',
+    description: 'Declare CT, Quiz or Viva',
+    tone: 'text-info bg-info/10',
+    options: [
+      { kind: 'declare_ct', assessmentKind: 'ct', icon: 'quiz', label: 'Class Test (CT)', description: 'Batch-wide class test for a course' },
+      { kind: 'declare_ct', assessmentKind: 'quiz', icon: 'fact_check', label: 'Quiz', description: 'Batch-wide quiz for a course' },
+      { kind: 'declare_ct', assessmentKind: 'viva', icon: 'co_present', label: 'Viva', description: 'Batch-wide viva for a course' },
+    ],
+  },
+  {
+    kind: 'group_wrapup',
+    icon: 'event_available',
+    label: 'Term Wrap-up',
+    description: 'End classes (start DL) and submit the full exam routine',
+    tone: 'text-success bg-success/10',
+    options: [
+      { kind: 'wrap_up', wrapKind: 'classes_end', icon: 'event_busy', label: 'End Classes (Start DL)', description: 'Classes stop from a date — DL for exam prep begins' },
+      { kind: 'exam_routine', icon: 'menu_book', label: 'Full Exam Routine', description: 'Schedule every subject, then submit for approval' },
+    ],
+  },
   { kind: 'conflicts', icon: 'fact_check', label: 'Find Time Conflicts', description: 'Scan classes and exams for time clashes', tone: 'text-warning bg-warning/10' },
-  { kind: 'announcement', icon: 'campaign', label: 'Announcement', description: 'Post a notice to your section or whole batch — instantly in Updates.', tone: 'text-primary bg-primary/10 dark:text-primary-light', wide: true },
+  { kind: 'announcement', icon: 'campaign', label: 'Announcement', description: 'Post a notice to your section or whole batch — instantly in Updates.', tone: 'text-primary bg-primary/10 dark:text-primary-light' },
 ];
 
-export function CrActionsGrid({ onAction }) {
+/** Picker shown inside a grouped action — lists the individual options. */
+function CrGroupPicker({ group, onClose, onPick }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-      {CR_ACTIONS.map((action) => (
-        <button
-          key={action.kind}
-          type="button"
-          onClick={() => onAction(action.kind)}
-          className={`group flex items-center gap-3 rounded-2xl border p-3.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 ${
-            action.wide
-              ? 'border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent hover:border-primary/45 sm:col-span-2 xl:col-span-3'
-              : 'border-outline/60 bg-surface hover:border-primary/30'
-          }`}
-        >
-          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${action.tone}`}>
-            <Icon name={action.icon} size={22} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-label-lg font-bold text-ink">{action.label}</span>
-            <span className="mt-0.5 block truncate text-label-sm text-ink-muted">
-              {action.description}
+    <CrDialog open={Boolean(group)} onClose={onClose}>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${group?.tone ?? ''}`}>
+          <Icon name={group?.icon ?? 'list'} size={22} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-title-lg font-extrabold text-ink">{group?.label}</p>
+          <p className="text-label-sm text-ink-muted">Choose what you want to declare</p>
+        </div>
+      </div>
+      <div className="mt-4 space-y-2">
+        {(group?.options ?? []).map((option) => (
+          <button
+            key={`${option.kind}:${option.assessmentKind ?? ''}`}
+            type="button"
+            onClick={() => onPick(option)}
+            className="flex w-full items-center gap-3 rounded-2xl border border-outline/70 bg-surface p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-surface-variant"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-variant">
+              <Icon name={option.icon} size={20} />
             </span>
-          </span>
-          <Icon
-            name="chevron_right"
-            size={18}
-            className="shrink-0 text-ink-muted/50 transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
-          />
-        </button>
-      ))}
-    </div>
+            <span className="min-w-0 flex-1">
+              <span className="block text-label-lg font-bold text-ink">{option.label}</span>
+              <span className="block truncate text-label-sm text-ink-muted">{option.description}</span>
+            </span>
+            <Icon name="chevron_right" size={18} className="shrink-0 text-ink-muted/50" />
+          </button>
+        ))}
+      </div>
+    </CrDialog>
+  );
+}
+
+export function CrActionsGrid({ onAction }) {
+  const [picker, setPicker] = useState(null);
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        {CR_ACTION_GROUPS.map((action) => (
+          <button
+            key={action.kind}
+            type="button"
+            onClick={() => (action.options ? setPicker(action) : onAction(action.kind))}
+            className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-outline/60 bg-surface p-3.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md active:translate-y-0"
+          >
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${action.tone} transition-transform group-hover:scale-105`}>
+              <Icon name={action.icon} size={22} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-label-lg font-bold text-ink">{action.label}</span>
+              <span className="mt-0.5 block line-clamp-2 text-label-sm leading-snug text-ink-muted">
+                {action.description}
+              </span>
+            </span>
+            <Icon
+              name={action.options ? 'expand_more' : 'chevron_right'}
+              size={18}
+              className="shrink-0 text-ink-muted/50 transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+            />
+          </button>
+        ))}
+      </div>
+
+      <CrGroupPicker
+        group={picker}
+        onClose={() => setPicker(null)}
+        onPick={(option) => {
+          setPicker(null);
+          onAction(option.kind, option);
+        }}
+      />
+    </>
   );
 }
 
@@ -194,11 +293,20 @@ export function CrDeclarationTile({ item, onWithdraw }) {
 
 export function LocalDeclarationTile({ record, onWithdraw }) {
   const status = String(record.status ?? 'approved');
+  const syncError = String(record.syncError ?? '');
   const isPending = status === 'pending';
-  const tone = isPending ? 'text-warning' : 'text-success';
+  // The server rejected this declaration — it only lives on this device.
+  const syncFailed = !isPending && syncError !== '';
+  const tone = isPending ? 'text-warning' : syncFailed ? 'text-critical' : 'text-success';
+  const badgeBg = isPending ? 'bg-warning/15' : syncFailed ? 'bg-critical/15' : 'bg-success/15';
+  const statusLine = isPending
+    ? 'PENDING — AWAITING COORDINATOR'
+    : syncFailed
+      ? 'SYNC FAILED — SAVED ON THIS DEVICE ONLY'
+      : 'ACTIVE — PUBLISHED TO YOUR SECTION';
   return (
     <div className="mb-2 flex items-start gap-3 rounded-2xl border border-outline/60 bg-surface p-3.5">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isPending ? 'bg-warning/15' : 'bg-success/15'}`}>
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${badgeBg}`}>
         <Icon name={declarationIcon(record.type)} size={20} className={tone} />
       </span>
       <div className="min-w-0 flex-1">
@@ -208,11 +316,10 @@ export function LocalDeclarationTile({ record, onWithdraw }) {
         {String(record.reason ?? '') !== '' && (
           <p className="mt-0.5 line-clamp-2 text-body-sm text-ink-muted">{record.reason}</p>
         )}
-        <p className={`mt-0.5 text-[9px] font-bold tracking-wide ${tone}`}>
-          {isPending
-            ? 'PENDING — AWAITING COORDINATOR'
-            : 'ACTIVE — PUBLISHED TO YOUR SECTION'}
-        </p>
+        <p className={`mt-0.5 text-[9px] font-bold tracking-wide ${tone}`}>{statusLine}</p>
+        {syncFailed && (
+          <p className="mt-0.5 line-clamp-2 text-label-sm text-critical/90">Server: {syncError}</p>
+        )}
       </div>
       {onWithdraw && (
         <button
@@ -334,16 +441,26 @@ export function CrDeclarationsSection({ title = 'My Declarations', controller, o
 // ---------------------------------------------------------------------------
 
 export function CrDialog({ open, onClose, children }) {
+  // Close on Escape — matches native dialog behaviour.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center sm:p-6"
+      className="animate-fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center sm:p-6"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-surface p-5 shadow-2xl sm:rounded-2xl"
+        className="glass-strong animate-scale-in max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-surface p-5 shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-1 flex items-center gap-3">

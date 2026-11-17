@@ -14,10 +14,10 @@ import {
 } from '../../components/ui/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { extractPayload } from '../../api/client.js';
-import { getExams } from '../../api/endpoints.js';
+import { getExams, getOverrides } from '../../api/endpoints.js';
 import { coordinatorExams } from '../../data/seedData.js';
 import { conflictDetector } from '../../lib/conflictDetector.js';
-import { parseExamEntry } from '../../lib/models.js';
+import { parseExamEntry, parseScheduleOverride } from '../../lib/models.js';
 import { useWeeklyRoutine } from './useRoutineData.js';
 
 const toList = (payload) => {
@@ -79,6 +79,21 @@ export default function RoutineConflictsPage() {
   const [exams, setExams] = useState([]);
   const [examLoading, setExamLoading] = useState(true);
   const [examDemo, setExamDemo] = useState(false);
+  const [overrides, setOverrides] = useState([]);
+  const [overrideLoading, setOverrideLoading] = useState(true);
+
+  const loadOverrides = useCallback(async () => {
+    setOverrideLoading(true);
+    try {
+      const response = await getOverrides({ status: 'approved' });
+      const list = toList(extractPayload(response)).map(parseScheduleOverride);
+      setOverrides(list);
+    } catch {
+      setOverrides([]);
+    } finally {
+      setOverrideLoading(false);
+    }
+  }, []);
 
   const loadExams = useCallback(async () => {
     setExamLoading(true);
@@ -106,25 +121,65 @@ export default function RoutineConflictsPage() {
     loadExams();
   }, [loadExams]);
 
+  useEffect(() => {
+    loadOverrides();
+  }, [loadOverrides]);
+
+  const effectiveRoutine = useMemo(() => {
+    const result = [...entries];
+    const dayName = (date) => {
+      const parsed = new Date(`${date}T00:00:00`);
+      return Number.isNaN(parsed.getTime())
+        ? null
+        : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+            parsed.getDay()
+          ];
+    };
+
+    for (const override of overrides) {
+      if (override.type !== 'extra_class' || !override.startTime || !override.endTime) {
+        continue;
+      }
+      const day = dayName(override.specificDate);
+      if (!day) continue;
+      result.push({
+        id: `override-${override.id}`,
+        courseId: override.courseId,
+        course: override.course,
+        day,
+        period: 0,
+        startTime: override.startTime,
+        endTime: override.endTime,
+        room: override.room,
+        classType: override.classType === 'ct' ? 'ct' : 'lecture',
+        isBreak: false,
+        source: 'override',
+      });
+    }
+    return result;
+  }, [entries, overrides]);
+
   const conflicts = useMemo(
     () =>
       conflictDetector
-        .detectConflicts(entries, exams)
+        .detectConflicts(effectiveRoutine, exams)
         .map((conflict, index) => ({ ...conflict, __key: `${conflict.type}-${index}` })),
-    [entries, exams]
+    [effectiveRoutine, exams]
   );
 
   const freeSlots = useMemo(
-    () => conflictDetector.findFreeSlots(entries),
-    [entries]
+    () => conflictDetector.findFreeSlots(effectiveRoutine),
+    [effectiveRoutine]
   );
 
   const refresh = () => {
     refreshRoutine();
     loadExams();
+    loadOverrides();
   };
 
-  const loading = (routineLoading && entries.length === 0) || examLoading;
+  const loading =
+    (routineLoading && entries.length === 0) || examLoading || overrideLoading;
 
   return (
     <PageShell className="max-w-3xl">
@@ -161,7 +216,7 @@ export default function RoutineConflictsPage() {
                 {conflicts.length === 0 ? 'No time conflicts found' : 'Conflicts detected'}
               </p>
               <p className="mt-0.5 text-body-sm text-white/80">
-                {entries.length} weekly classes and {exams.length} exam
+                {effectiveRoutine.length} classes and {exams.length} exam
                 {exams.length === 1 ? '' : 's'} checked across the teaching week.
               </p>
               <p className="mt-1 text-label-sm text-white/65">

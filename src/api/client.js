@@ -19,6 +19,18 @@ export function apiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
 
+/**
+ * Resolve an attachment/upload reference to an absolute URL.
+ * Accepts root-relative paths (`/uploads/updates/x.pdf`) and bare absolute
+ * URLs; falls back to the API origin when one is configured.
+ */
+export function resolveAssetUrl(name) {
+  const raw = String(name ?? '').trim();
+  if (!raw || /^(blob:|data:|https?:)/i.test(raw)) return raw;
+  const origin = apiOrigin();
+  return `${origin}${raw.startsWith('/') ? '' : '/'}${raw}`;
+}
+
 export const TIMEOUT_MS = 30_000;
 
 export class ApiError extends Error {
@@ -46,7 +58,6 @@ const unauthorizedListeners = new Set();
 const CREDENTIAL_PATHS = [
   '/auth/login',
   '/auth/register',
-  '/auth/dev-login',
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/google',

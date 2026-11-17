@@ -1,5 +1,4 @@
-// Forgot password — port of forgot_password_screen.dart.
-// Web adaptation: uses the backend reset endpoint (no Firebase in this build).
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CuetBackground, Icon, Spinner, TextField } from '../../components/ui/index.jsx';

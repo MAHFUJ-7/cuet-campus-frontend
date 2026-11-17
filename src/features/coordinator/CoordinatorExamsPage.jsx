@@ -24,6 +24,7 @@ import {
   getCoordinatorSections,
   getCourses,
   getExams,
+  reviewExam,
   updateExam,
 } from '../../api/endpoints.js';
 import {
@@ -81,6 +82,7 @@ export default function CoordinatorExamsPage() {
   const [formErrors, setFormErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [reviewingId, setReviewingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -203,6 +205,25 @@ export default function CoordinatorExamsPage() {
     }
   };
 
+  const review = async (exam, decision) => {
+    const id = examIdOf(exam);
+    if (!id) return;
+    if (isOfflineSession()) {
+      toast.info('Reviewing exams requires a connection.');
+      return;
+    }
+    setReviewingId(id);
+    try {
+      await reviewExam(id, decision);
+      toast.success(decision === 'approved' ? 'Exam approved and published' : 'Exam request rejected');
+      load();
+    } catch (reviewError) {
+      toast.error(describeApiError(reviewError));
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
   const remove = async () => {
     const target = deleteTarget;
     setDeleteTarget(null);
@@ -263,22 +284,75 @@ export default function CoordinatorExamsPage() {
           {sortedExams.map((exam) => {
             const course =
               exam.courseId && typeof exam.courseId === 'object' ? exam.courseId : null;
+            const status = String(exam.status ?? 'approved');
+            const statusBadge =
+              status === 'pending'
+                ? { label: 'PENDING', className: 'bg-warning/15 text-warning' }
+                : status === 'rejected'
+                  ? { label: 'REJECTED', className: 'bg-critical/15 text-critical' }
+                  : { label: 'APPROVED', className: 'bg-success/15 text-success' };
             return (
               <div
                 key={examIdOf(exam)}
-                className="flex items-center gap-3 rounded-2xl border border-outline/60 bg-surface px-3.5 py-2.5"
+                className={`flex items-center gap-3 rounded-2xl border bg-surface px-3.5 py-2.5 ${
+                  status === 'pending'
+                    ? 'border-warning/40'
+                    : status === 'rejected'
+                      ? 'border-critical/40'
+                      : 'border-outline/60'
+                }`}
               >
-                <Icon name="event_available" size={20} className="shrink-0 text-critical" />
+                <Icon
+                  name={status === 'pending' ? 'schedule' : 'event_available'}
+                  size={20}
+                  className={`shrink-0 ${status === 'pending' ? 'text-warning' : 'text-critical'}`}
+                />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-title-sm font-bold text-ink">
-                    {course?.code ?? '?'} · {sectionLabel(exam)}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-title-sm font-bold text-ink">
+                      {course?.code ?? '?'} · {sectionLabel(exam)}
+                    </p>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-wide ${statusBadge.className}`}>
+                      {statusBadge.label}
+                    </span>
+                  </div>
                   <p className="truncate text-label-md text-ink-muted">
                     {String(exam.examType ?? 'final').toUpperCase()} •{' '}
                     {String(exam.examDate ?? '').slice(0, 10)} • {exam.startTime}-{exam.endTime}
                     {exam.room ? ` • ${exam.room}` : ''}
                   </p>
+                  {status === 'pending' && (
+                    <p className="text-label-sm text-warning">
+                      CR request — approve to publish it to the section.
+                    </p>
+                  )}
+                  {status === 'rejected' && exam.reviewNote && (
+                    <p className="text-label-sm text-critical">Rejected: {exam.reviewNote}</p>
+                  )}
                 </div>
+                {status === 'pending' && (
+                  <>
+                    <Button
+                      variant="tonal"
+                      size="sm"
+                      icon="check"
+                      onClick={() => review(exam, 'approved')}
+                      disabled={reviewingId === examIdOf(exam)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="sm"
+                      icon="close"
+                      onClick={() => review(exam, 'rejected')}
+                      disabled={reviewingId === examIdOf(exam)}
+                      className="text-critical"
+                    >
+                      Reject
+                    </Button>
+                  </>
+                )}
                 <IconButton
                   icon="edit"
                   label="Edit exam"

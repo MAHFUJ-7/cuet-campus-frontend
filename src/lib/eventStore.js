@@ -57,6 +57,7 @@ export const EVENT_TYPES = {
 
 export const AUDIENCE_LABELS = {
   campus: 'Campus-wide',
+  batch: 'All sections',
   section: 'Section',
   personal: 'Personal',
 };
@@ -182,7 +183,7 @@ function normalizeEvent(raw) {
   if (!startDate) return null;
   const endDate = normalizeDate(raw.endDate) || startDate;
   const type = EVENT_TYPES[raw.type] ? raw.type : 'other';
-  const audience = ['campus', 'section', 'personal'].includes(raw.audience)
+  const audience = ['campus', 'batch', 'section', 'personal'].includes(raw.audience)
     ? raw.audience
     : 'campus';
 
@@ -198,6 +199,8 @@ function normalizeEvent(raw) {
     location: String(raw.location ?? '').trim(),
     audience,
     sectionName: audience === 'section' ? normalizeSectionName(raw.sectionName) : '',
+    batchId: audience === 'batch' ? String(raw.batchId ?? '') : '',
+    batchNumber: audience === 'batch' ? Number(raw.batchNumber) || 0 : 0,
     createdBy: {
       id: String(raw.createdBy?.id ?? ''),
       name: String(raw.createdBy?.name ?? 'CUET AI Campus'),
@@ -279,6 +282,7 @@ export function eventAudienceLabel(event) {
   if (event.audience === 'section') {
     return event.sectionName ? `Section ${event.sectionName}` : 'Section event';
   }
+  if (event.audience === 'batch') return 'All sections (batch)';
   if (event.audience === 'personal') return 'Personal';
   return 'Campus-wide';
 }
@@ -296,12 +300,26 @@ export function isEventPast(event, now = new Date()) {
 
 export function canManageEvent(event, auth) {
   if (!event || !auth?.profile) return false;
-  if (auth.isCoordinator || auth.isAdmin) return true;
+  const profile = auth.profile;
+  if (auth.isCoordinator) return true;
   if (event.audience === 'personal') {
     return String(event.createdBy?.id ?? '') === String(auth.profile.id ?? '');
   }
+  if (event.audience === 'batch') {
+    if (auth.isCoordinator) return true;
+    if (String(event.createdBy?.id ?? '') === String(profile.id ?? '')) return true;
+    if (!auth.isCR) return false;
+    if (event.batchId && profile.batch?.id) return event.batchId === profile.batch.id;
+    if (event.batchNumber && profile.batch?.batchNumber) {
+      return Number(event.batchNumber) === Number(profile.batch.batchNumber);
+    }
+    return false;
+  }
   if (auth.isCR && event.audience === 'section') {
-    return sameSection(event.sectionName, auth.profile.section);
+    return (
+      sameSection(event.sectionName, auth.profile.section) ||
+      String(event.createdBy?.id ?? '') === String(profile.id ?? '')
+    );
   }
   return false;
 }
@@ -323,8 +341,16 @@ export const eventStore = {
           return String(event.createdBy?.id ?? '') === String(profile.id ?? '');
         }
         if (event.audience === 'section') {
-          if (auth.isCoordinator || auth.isAdmin) return true;
+          if (auth.isCoordinator) return true;
           return sameSection(event.sectionName, profile.section);
+        }
+        if (event.audience === 'batch') {
+          if (auth.isCoordinator) return true;
+          if (event.batchId && profile.batch?.id) return event.batchId === profile.batch.id;
+          if (event.batchNumber && profile.batch?.batchNumber) {
+            return Number(event.batchNumber) === Number(profile.batch.batchNumber);
+          }
+          return true;
         }
         return true;
       })
@@ -338,17 +364,23 @@ export const eventStore = {
     const manager = auth.isCoordinator || auth.isAdmin;
     let audience = values.audience;
     if (!manager && !auth.isCR) audience = 'personal';
-    if (auth.isCR && !manager && audience === 'campus') audience = 'section';
-    if (!['campus', 'section', 'personal'].includes(audience)) {
-      audience = manager ? 'campus' : auth.isCR ? 'section' : 'personal';
+    if (auth.isCR && !manager && audience === 'campus') audience = 'batch';
+    if (!['campus', 'batch', 'section', 'personal'].includes(audience)) {
+      audience = manager ? 'campus' : auth.isCR ? 'batch' : 'personal';
     }
 
     let sectionName = '';
+    let batchId = '';
+    let batchNumber = 0;
     if (audience === 'section') {
       sectionName = normalizeSectionName(values.sectionName || profile.section);
       if (!sectionName) {
         throw new Error('Choose a section for this event');
       }
+    }
+    if (audience === 'batch') {
+      batchId = String(profile.batch?.id ?? '');
+      batchNumber = Number(profile.batch?.batchNumber) || 0;
     }
 
     const existing = values.id ? readAll().find((event) => event.id === values.id) : null;
@@ -362,6 +394,8 @@ export const eventStore = {
       ...values,
       audience,
       sectionName,
+      batchId,
+      batchNumber,
       id: existing?.id ?? `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdBy: existing?.createdBy ?? { id: profile.id, name: profile.name ?? 'User' },
       createdAt: existing?.createdAt ?? new Date().toISOString(),

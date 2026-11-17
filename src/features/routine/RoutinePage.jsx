@@ -3,7 +3,7 @@
 // Multi-period labs are collapsed into one card (e.g. P4–P6) to mirror the
 // official PDF, and the official PDF is bundled so the PDF pane works offline.
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Button,
   Card,
@@ -18,7 +18,8 @@ import {
 } from '../../components/ui/index.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { batchNumberLabel } from '../../lib/models.js';
+import { extractPayload } from '../../api/client.js';
+import { parseDaySchedule, batchNumberLabel } from '../../lib/models.js';
 import { roomDisplayLabel } from '../../lib/display.js';
 import {
   dayMatches,
@@ -31,8 +32,11 @@ import {
 } from '../../lib/datetime.js';
 import { groupRoutineEntries, periodRangeLabel } from '../../lib/routine.js';
 import { applyDayDeclarations, nextDateForWeekdayIndex } from '../../lib/crSchedule.js';
-import { downloadRoutinePdf } from '../../api/endpoints.js';
+import { downloadRoutinePdf, getCalendarDay } from '../../api/endpoints.js';
 import { useRoutinePdfInfo, useWeeklyRoutine } from './useRoutineData.js';
+import ExamRoutinePane from './ExamRoutinePane.jsx';
+import { PdfInlineViewer } from '../../components/PdfViewerModal.jsx';
+import { downloadFile, filenameFromTitle, saveBlob } from '../../lib/download.js';
 
 const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
 const OFFICIAL_PDF_URL = '/docs/cuet-cse-l3t2-routine-2022.pdf';
@@ -45,13 +49,13 @@ function todayIndex() {
 
 /** Accent color per entry: CT → red, lab/sessional → blue accent, else primary. */
 function typeAccent(type, code) {
-  if (code === 'CT') return 'text-cancellation bg-cancellation/10';
+  if (type === 'ct' || code === 'CT') return 'text-cancellation bg-cancellation/10';
   if (type === 'lab' || type === 'sessional') return 'text-accent bg-accent/10';
   return 'text-primary bg-primary/10';
 }
 
 function typeLabel(type, code) {
-  if (code === 'CT') return 'CLASS TEST';
+  if (type === 'ct' || code === 'CT') return 'CLASS TEST';
   if (type === 'lab') return 'SESSIONAL / LAB';
   if (type === 'sessional') return 'SESSIONAL';
   return 'LECTURE';
@@ -76,11 +80,38 @@ function WeeklyGridPane({ section }) {
   const { loading, error, entries, fromCache, refresh } = useWeeklyRoutine(section);
   const [dayIndex, setDayIndex] = useState(() => Math.max(todayIndex(), 0));
   const [now, setNow] = useState(() => new Date());
+  const [calendarDay, setCalendarDay] = useState(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const day = WEEK_DAYS[Math.min(Math.max(dayIndex, 0), WEEK_DAYS.length - 1)];
+  const selectedDate = nextDateForWeekdayIndex(dayIndex, now);
+  const selectedDateIso = isoDate(selectedDate);
+
+  // The weekly routine is the unmodified official grid. The calendar endpoint
+  // is date-aware and already includes server-side CR declarations (CT, extra
+  // class, cancellation, room/time change), so students on any device see them.
+  useEffect(() => {
+    let cancelled = false;
+    setCalendarDay(null);
+    getCalendarDay(selectedDateIso)
+      .then((response) => {
+        if (cancelled) return;
+        const payload = extractPayload(response);
+        if (payload && typeof payload === 'object' && Array.isArray(payload.classes)) {
+          setCalendarDay(parseDaySchedule(payload));
+        }
+      })
+      .catch(() => {
+        // Keep the official weekly grid when the server is unreachable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDateIso, section?.id]);
 
   if (loading && entries.length === 0) return <LoadingScreen label="Loading routine…" />;
   if (error && entries.length === 0) return <ErrorState message={error} onRetry={refresh} />;
@@ -103,14 +134,15 @@ function WeeklyGridPane({ section }) {
     );
   }
 
-  const day = WEEK_DAYS[Math.min(Math.max(dayIndex, 0), WEEK_DAYS.length - 1)];
-  const selectedDate = nextDateForWeekdayIndex(dayIndex, now);
-  const dayEntries = entries
+  const weeklyEntries = entries
     .filter((entry) => dayMatches(entry.day, day))
     .sort((a, b) => (a.period ?? 0) - (b.period ?? 0));
+  const dayEntries = calendarDay?.classes ?? weeklyEntries;
   const effectiveDay = applyDayDeclarations(dayEntries, {
     section,
-    date: isoDate(selectedDate),
+    date: selectedDateIso,
+    baseDayStatus: calendarDay?.dayStatus,
+    baseDeclaration: calendarDay?.declaration,
   });
   const dayGroups = groupRoutineEntries(effectiveDay.entries);
   const isToday = isoDate(selectedDate) === isoDate(now);
@@ -177,21 +209,46 @@ function WeeklyGridPane({ section }) {
       </div>
 
       {effectiveDay.dayStatus !== 'regular' && (
-        <Card className="mb-3 border-warning/25 bg-warning/5">
+        <Card
+          className={`mb-3 ${
+            effectiveDay.dayStatus === 'classes_ended'
+              ? 'border-primary/25 bg-primary/5'
+              : 'border-warning/25 bg-warning/5'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                effectiveDay.dayStatus === 'classes_ended'
+                  ? 'bg-primary/15 text-primary dark:text-primary-light'
+                  : 'bg-warning/15 text-warning'
+              }`}
+            >
               <Icon
-                name={effectiveDay.dayStatus === 'mid_break' ? 'beach_access' : 'event_busy'}
+                name={
+                  effectiveDay.dayStatus === 'mid_break'
+                    ? 'beach_access'
+                    : effectiveDay.dayStatus === 'classes_ended'
+                      ? 'school'
+                      : 'event_busy'
+                }
                 size={19}
               />
             </span>
             <div className="min-w-0">
               <p className="text-title-sm font-bold text-ink">
-                {effectiveDay.dayStatus === 'mid_break' ? 'Mid-break' : 'Day off'} ·{' '}
-                {formatDayMonth(selectedDate)}
+                {effectiveDay.dayStatus === 'mid_break'
+                  ? 'Mid-break'
+                  : effectiveDay.dayStatus === 'classes_ended'
+                    ? 'Classes ended'
+                    : 'Day off'}{' '}
+                · {formatDayMonth(selectedDate)}
               </p>
               <p className="text-label-sm text-ink-muted">
-                {effectiveDay.declaration?.reason || 'No regular classes on this date.'}
+                {effectiveDay.declaration?.reason ||
+                  (effectiveDay.dayStatus === 'classes_ended'
+                    ? 'Regular classes are over — final exam period.'
+                    : 'No regular classes on this date.')}
               </p>
             </div>
           </div>
@@ -272,7 +329,7 @@ function WeeklyGridPane({ section }) {
                             UPDATED
                           </span>
                         )}
-                        {extra && (
+                        {extra && entry.classType !== 'ct' && (
                           <span className="rounded-full bg-extra-class/15 px-2 py-0.5 text-[8px] font-extrabold tracking-wider text-extra-class">
                             EXTRA
                           </span>
@@ -341,34 +398,42 @@ function WeeklyGridPane({ section }) {
 function RoutinePdfPane() {
   const { loading, error, info, refresh } = useRoutinePdfInfo();
   const toast = useToast();
-  const [pdfUrl, setPdfUrl] = useState(null);
+  const [blobUrl, setBlobUrl] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  // Revoke the object URL when the component unmounts or the URL changes.
+  /** Downloads the routine PDF (reuses the already-loaded blob when present). */
+  const downloadPdf = async (target) => {
+    setDownloading(true);
+    try {
+      const filename = filenameFromTitle(target?.title, '.pdf', 'class-routine.pdf');
+      if (blobUrl) {
+        await downloadFile(blobUrl, filename);
+      } else {
+        saveBlob(await downloadRoutinePdf(target.id), filename);
+      }
+    } catch (err) {
+      toast.error(`Download failed: ${err?.message ?? err}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Free the last blob URL when the pane unmounts.
   useEffect(() => {
     return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, [pdfUrl]);
+  }, [blobUrl]);
 
-  // A refresh that finds a different PDF must not keep showing the old one.
-  const infoId = info?.id ?? '';
-  useEffect(() => {
-    setPdfUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return null;
-    });
-  }, [infoId]);
-
+  /** Loads the authed routine PDF and shows it in place — never downloads. */
   const openPdf = async (target) => {
     setBusy(true);
     try {
       const blob = await downloadRoutinePdf(target.id);
       const url = URL.createObjectURL(blob);
-      setPdfUrl((old) => {
-        if (old) URL.revokeObjectURL(old);
-        return url;
-      });
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      setBlobUrl(url);
     } catch (err) {
       toast.error(`Failed to load routine PDF: ${err?.message ?? err}`);
     } finally {
@@ -389,7 +454,7 @@ function RoutinePdfPane() {
                 {formatBytes(info.size)} · Updated {timeAgo(info.createdAt)}
               </p>
             </div>
-            {!pdfUrl && (
+            {!blobUrl && (
               <button
                 type="button"
                 disabled={busy}
@@ -400,12 +465,21 @@ function RoutinePdfPane() {
                 View PDF
               </button>
             )}
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={() => downloadPdf(info)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-outline px-3.5 py-2 text-label-lg font-semibold text-ink-muted transition-colors hover:bg-surface-variant hover:text-ink disabled:opacity-60"
+            >
+              {downloading ? <Spinner size={16} /> : <Icon name="download" size={17} />}
+              Download
+            </button>
           </div>
-          {pdfUrl && (
-            <iframe
-              title="Uploaded class routine PDF"
-              src={pdfUrl}
-              className="mt-2 h-[60vh] w-full rounded-2xl border border-outline bg-surface"
+          {blobUrl && (
+            <PdfInlineViewer
+              src={blobUrl}
+              title={info.title}
+              className="mt-2 h-[60vh]"
             />
           )}
         </div>
@@ -433,25 +507,18 @@ function RoutinePdfPane() {
               Level-3, Term-II · Batch 22 · Effective 06/07/2026
             </p>
           </div>
-          <a
-            href={OFFICIAL_PDF_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-white/15 px-3.5 py-2 text-label-lg font-semibold text-white backdrop-blur transition-colors hover:bg-white/25"
-          >
-            Open
-            <Icon name="chevron_right" size={17} />
-          </a>
         </div>
-        <iframe
-          title="Official class routine PDF"
-          src={OFFICIAL_PDF_URL}
-          className="h-[68vh] w-full bg-white"
-        />
         <p className="border-t border-outline/60 px-4 py-2.5 text-label-sm text-ink-muted">
           Section A — Room 3403 · Section B — Room 3305 · Academic Building-3 (2nd Floor)
         </p>
       </div>
+
+      {/* Rendered in place with pdf.js — works offline, never downloads. */}
+      <PdfInlineViewer
+        src={OFFICIAL_PDF_URL}
+        title="Official Class Routine"
+        className="mt-2 h-[68vh]"
+      />
     </div>
   );
 }
@@ -462,8 +529,11 @@ function RoutinePdfPane() {
 
 export default function RoutinePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const auth = useAuth();
-  const [view, setView] = useState(0);
+  // Deep link: /routine?tab=exam opens the Exam Routine pane directly
+  // (the CR Center's "Final Exam Routine" tile lands here).
+  const [view, setView] = useState(() => (searchParams.get('tab') === 'exam' ? 2 : 0));
   const profile = auth.profile;
   const section = profile?.section;
   const sectionName = section?.name;
@@ -499,14 +569,20 @@ export default function RoutinePage() {
           tabs={[
             { value: 0, label: 'WEEKLY GRID' },
             { value: 1, label: 'ROUTINE PDF' },
+            { value: 2, label: 'EXAM ROUTINE' },
           ]}
           value={view}
-          onChange={setView}
+          onChange={(next) => {
+            setView(next);
+            setSearchParams(next === 2 ? { tab: 'exam' } : {}, { replace: true });
+          }}
           className="w-full sm:w-auto"
         />
       </div>
 
-      {view === 0 ? <WeeklyGridPane section={section} /> : <RoutinePdfPane />}
+      {view === 0 && <WeeklyGridPane section={section} />}
+      {view === 1 && <RoutinePdfPane />}
+      {view === 2 && <ExamRoutinePane section={section} profile={profile} />}
     </PageShell>
   );
 }

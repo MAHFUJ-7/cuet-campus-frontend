@@ -147,6 +147,12 @@ export default function CoordinatorAcademicsPage() {
               onClick={() => navigate('/coordinator/exams')}
             />
             <ManageTile
+              icon="menu_book"
+              title="Routine proposals"
+              subtitle="Review CR weekly routines"
+              onClick={() => navigate('/coordinator/routine-proposals')}
+            />
+            <ManageTile
               icon="rule_folder"
               title="Conflicts"
               subtitle="Quality & clashes"

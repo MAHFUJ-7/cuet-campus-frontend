@@ -9,10 +9,11 @@ import {
   PageShell,
   SkeletonBlock,
 } from '../../components/ui/index.jsx';
+import PdfViewerModal from '../../components/PdfViewerModal.jsx';
+import ImageViewerModal, { isImageAttachment } from '../../components/ImageViewerModal.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { extractPayload } from '../../api/client.js';
-import { describeApiError } from '../../api/errors.js';
+import { extractPayload, resolveAssetUrl } from '../../api/client.js';
 import { getUpdates, markUpdateRead } from '../../api/endpoints.js';
 import {
   batchNumberLabel,
@@ -94,10 +95,14 @@ function updateSourceLabel(update, sectionName = '') {
 
 function UpdateDetailSheet({ update, section, onClose }) {
   const toast = useToast();
+  const [pdfView, setPdfView] = useState(null);
+  const [imageView, setImageView] = useState(null);
 
   useEffect(() => {
     if (!update) return undefined;
     const handleKeyDown = (event) => {
+      // While the PDF viewer is open, Escape closes the viewer, not the sheet.
+      if (pdfView || imageView) return;
       if (event.key === 'Escape') onClose();
     };
     const previousOverflow = document.body.style.overflow;
@@ -107,22 +112,37 @@ function UpdateDetailSheet({ update, section, onClose }) {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [update, onClose]);
+  }, [update, onClose, pdfView, imageView]);
 
   if (!update) return null;
   const attachments = update.attachments ?? [];
+  const eventTime = update.eventDateTime instanceof Date && !Number.isNaN(update.eventDateTime.getTime())
+    ? update.eventDateTime.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : null;
 
   const openAttachment = (name) => {
-    if (/^https?:\/\//i.test(name)) {
-      window.open(name, '_blank', 'noopener,noreferrer');
-    } else {
+    const url = resolveAssetUrl(name);
+    // A bare filename (no path) only exists in the device's local mirror
+    // until the post syncs — there is nothing to open yet.
+    if (!url || !url.includes('/')) {
       toast.info(`Attachment: ${name}`);
+      return;
+    }
+    const filename = decodeURIComponent((url.split('/').pop() ?? 'file').split('?')[0]);
+    // PDFs and images open in the in-app viewers so the browser's
+    // "download instead of open" setting can never hijack the click.
+    if (/\.pdf(?:$|[?#])/i.test(filename)) {
+      setPdfView({ title: filename, src: url });
+    } else if (isImageAttachment(filename)) {
+      setImageView({ title: filename, src: url });
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in"
       onClick={onClose}
       role="presentation"
     >
@@ -130,11 +150,11 @@ function UpdateDetailSheet({ update, section, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="update-detail-title"
-        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-surface p-5 shadow-2xl sm:rounded-2xl"
+        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-5 shadow-2xl animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-2 flex items-center gap-3">
-          <span className="h-1 w-10 rounded-full bg-outline sm:hidden" />
+          <span className="h-1 w-10 rounded-full bg-outline" />
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -161,6 +181,21 @@ function UpdateDetailSheet({ update, section, onClose }) {
           {update.title}
         </h2>
         <p className="mt-1.5 whitespace-pre-wrap text-body-md text-ink-muted">{update.description}</p>
+
+        {eventTime && (
+          <div className="mt-4 rounded-xl bg-primary/8 p-3 text-body-sm text-ink">
+            <p className="flex items-center gap-2 font-semibold">
+              <Icon name="event" size={17} className="text-primary" />
+              {eventTime}
+            </p>
+            {update.eventLocation && (
+              <p className="mt-1 flex items-center gap-2 text-ink-muted">
+                <Icon name="location_on" size={16} />
+                {update.eventLocation}
+              </p>
+            )}
+          </div>
+        )}
 
         {attachments.length > 0 && (
           <div className="mt-4">
@@ -189,6 +224,20 @@ function UpdateDetailSheet({ update, section, onClose }) {
           </div>
         )}
       </div>
+
+      <PdfViewerModal
+        open={Boolean(pdfView)}
+        title={pdfView?.title ?? 'PDF'}
+        src={pdfView?.src ?? null}
+        onClose={() => setPdfView(null)}
+      />
+
+      <ImageViewerModal
+        open={Boolean(imageView)}
+        title={imageView?.title ?? 'Image'}
+        src={imageView?.src ?? null}
+        onClose={() => setImageView(null)}
+      />
     </div>
   );
 }
@@ -204,7 +253,13 @@ const SCOPE_STYLES = {
   section: { icon: 'groups', tone: 'text-primary-light bg-primary-light/10 dark:text-primary-light' },
 };
 
-function UpdatesPane() {
+const SORT_OPTIONS = [
+  { value: 'priority', label: 'Priority first' },
+  { value: 'latest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+];
+
+function UpdatesPane({ sortBy = 'priority' }) {
   const auth = useAuth();
   const { loading, items, fromCache, refresh } = useUpdatesFeed(auth.profile);
   const [readIds, setReadIds] = useState(() => new Set());
@@ -214,13 +269,17 @@ function UpdatesPane() {
   const sourceLabel = (update) => updateSourceLabel(update, section);
 
   const sorted = useMemo(() => {
+    const priorityRank = (p) => (p === 'urgent' ? 0 : p === 'important' ? 1 : 2);
     return [...items].sort((a, b) => {
-      const ap = a.priority === 'urgent' ? 0 : 1;
-      const bp = b.priority === 'urgent' ? 0 : 1;
+      if (sortBy === 'latest') return b.createdAt - a.createdAt;
+      if (sortBy === 'oldest') return a.createdAt - b.createdAt;
+      // Priority: urgent first, then important, then newest.
+      const ap = priorityRank(a.priority);
+      const bp = priorityRank(b.priority);
       if (ap !== bp) return ap - bp;
       return b.createdAt - a.createdAt;
     });
-  }, [items]);
+  }, [items, sortBy]);
 
   const openUpdate = async (update) => {
     if (!update.isRead) {
@@ -270,6 +329,11 @@ function UpdatesPane() {
                   <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${typeTone}`}>
                     {sourceLabel(update)}
                   </span>
+                  {update.type === 'event' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[8px] font-bold text-accent">
+                      <Icon name="event" size={10} /> EVENT
+                    </span>
+                  )}
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[8px] font-bold ${scope.tone}`}>
                     <Icon name={scope.icon} size={9} />
                     {updateScopeLabel(update)}
@@ -317,6 +381,7 @@ function UpdatesPane() {
 export default function UpdatesPage() {
   const auth = useAuth();
   const profile = auth.profile;
+  const [sortBy, setSortBy] = useState('priority');
   const dept = profile?.department?.code ?? 'CUET';
   const batch = batchNumberLabel(profile?.batch);
   const section = profile?.section?.name;
@@ -326,8 +391,28 @@ export default function UpdatesPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Updates" subtitle={identity} />
-      <UpdatesPane />
+      <PageHeader
+        title="Updates"
+        subtitle={identity}
+        actions={
+          <label className="flex items-center gap-1.5 rounded-xl border border-outline bg-surface px-2.5 py-1.5 shadow-sm">
+            <Icon name="swap_horiz" size={16} className="text-ink-muted" />
+            <select
+              aria-label="Sort updates"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-transparent text-label-md font-semibold text-ink outline-none [&>option]:bg-surface"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
+      <UpdatesPane sortBy={sortBy} />
     </PageShell>
   );
 }

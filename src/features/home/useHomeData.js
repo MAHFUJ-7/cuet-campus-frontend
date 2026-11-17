@@ -6,14 +6,21 @@ import { extractPayload } from '../../api/client.js';
 import {
   getAssignments,
   getAttendanceView,
+  getCalendarDay,
   getDailyRoutine,
   getExams,
   getUpdates,
 } from '../../api/endpoints.js';
 import { offlineCache } from '../../lib/offlineCache.js';
 import { localFeed } from '../../lib/localFeed.js';
-import { parseCrUpdate, parseExamEntry, parseRoutineEntry } from '../../lib/models.js';
+import {
+  parseCrUpdate,
+  parseDaySchedule,
+  parseExamEntry,
+  parseRoutineEntry,
+} from '../../lib/models.js';
 import { applyRoutineOverrides } from '../../lib/routineOverrides.js';
+import { isoDate } from '../../lib/datetime.js';
 
 const toList = (payload) => {
   if (Array.isArray(payload)) return payload;
@@ -42,23 +49,34 @@ export function useHomeData() {
 
     // Fire requests concurrently; tolerate individual failures so one broken
     // endpoint doesn't blank the entire home screen.
-    const [routineRes, updatesRes] = await Promise.all([
+    const [routineRes, updatesRes, dayRes] = await Promise.all([
       safe(() => getDailyRoutine()),
       safe(() => getUpdates({ page: 1, limit: 20 })),
+      safe(() => getCalendarDay(isoDate(new Date()))),
     ]);
 
     let routine = null;
     let updates = null;
+    let daySchedule = null;
 
     if (routineRes) {
       routine = toList(extractPayload(routineRes)).map(parseRoutineEntry);
+    }
+    if (dayRes) {
+      const dayPayload = extractPayload(dayRes);
+      if (dayPayload && Array.isArray(dayPayload.classes)) {
+        daySchedule = parseDaySchedule(dayPayload);
+      }
     }
     if (updatesRes) {
       updates = toList(extractPayload(updatesRes)).map(parseCrUpdate);
     }
 
-    // Use cached data as fallback for any field that failed.
-    const cachedRoutine = routine ?? offlineCache.getCachedRoutine();
+    // The calendar endpoint is the authoritative date-aware view: it already
+    // contains CR-declared CTs, extra classes and class changes from the
+    // server, so every account sees them (not just the CR's own browser).
+    const cachedRoutine = (routine ?? offlineCache.getCachedRoutine() ?? []).map(parseRoutineEntry);
+    const effectiveRoutine = daySchedule ? daySchedule.classes : cachedRoutine;
     const cachedUpdates = updates ?? (offlineCache.getCachedUpdates() ?? []).map(parseCrUpdate);
 
     // Local CR declarations are published before the backend responds. Keep
@@ -71,8 +89,8 @@ export function useHomeData() {
         list.findIndex((item) => String(item.id) === String(update.id)) === index
     );
 
-    // Partial freshness: if EITHER core feed came from cache, disclose it.
-    const fromCache = routine == null || updates == null;
+    // Partial freshness: if any core feed came from cache, disclose it.
+    const fromCache = routine == null || updates == null || daySchedule == null;
 
     // Persist for offline use (best effort).
     try {
@@ -91,8 +109,8 @@ export function useHomeData() {
     if (
       routine == null &&
       updates == null &&
-      !cachedRoutine?.length &&
-      !cachedUpdates?.length &&
+      !cachedRoutine.length &&
+      !cachedUpdates.length &&
       !localUpdates.length
     ) {
       if (id === runId.current) setState({ loading: false, error: 'No data available', data: null });
@@ -104,7 +122,7 @@ export function useHomeData() {
       loading: false,
       error: null,
       data: {
-        routine: applyRoutineOverrides(cachedRoutine ?? [], section),
+        routine: applyRoutineOverrides(effectiveRoutine, section),
         updates: mergedUpdates,
         fromCache,
       },

@@ -4,13 +4,14 @@
 //   * Batch   → every section of their department + batch (e.g. 2022 CSE A & B)
 // Posts publish INSTANTLY to the local feed, then sync best-effort.
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Button,
   Card,
   Icon,
   PageHeader,
   PageShell,
+  SegmentedTabs,
   Spinner,
   SwitchRow,
   TextField,
@@ -19,8 +20,10 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { extractPayload, upload } from '../../api/client.js';
 import { createUpdate } from '../../api/endpoints.js';
+import { describeApiError } from '../../api/errors.js';
 import { localFeed } from '../../lib/localFeed.js';
 import { batchNumberLabel } from '../../lib/models.js';
+import EventForm from '../events/EventForm.jsx';
 
 const SCOPES = [
   {
@@ -38,6 +41,7 @@ const SCOPES = [
 ];
 
 const MAX_FILES = 6;
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // keep uploads inside server limits
 const ALLOWED = /\.(pdf|png|jpe?g|webp)$/i;
 
 export default function ComposeUpdatePage() {
@@ -66,6 +70,12 @@ export default function ComposeUpdatePage() {
   const [errors, setErrors] = useState({});
   const fileRef = useRef(null);
 
+  const [searchParams] = useSearchParams();
+  // Deep link: /cr/compose?tab=event opens straight on the event composer.
+  const [mode, setMode] = useState(
+    searchParams.get('tab') === 'event' ? 'event' : 'announcement'
+  );
+
   const activeScope = SCOPES.find((option) => option.value === scope) ?? SCOPES[0];
   const batchAudience = `All ${deptCode}${batchLabel ? ` Batch ${batchLabel}` : ''} students — both sections`;
   const audiencePreview =
@@ -76,10 +86,21 @@ export default function ComposeUpdatePage() {
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
     if (files.length === 0) return;
-    const accepted = files.filter((file) => ALLOWED.test(file.name));
-    if (accepted.length !== files.length) {
+    const wrongType = files.filter((file) => !ALLOWED.test(file.name));
+    if (wrongType.length > 0) {
       toast.error('Only PDF, PNG or JPG/WebP files can be attached.');
     }
+    const oversized = files.filter(
+      (file) => ALLOWED.test(file.name) && file.size > MAX_FILE_BYTES
+    );
+    if (oversized.length > 0) {
+      toast.error(
+        `Each attachment must be 10 MB or smaller — ${oversized.length} file${oversized.length === 1 ? '' : 's'} skipped.`
+      );
+    }
+    const accepted = files.filter(
+      (file) => ALLOWED.test(file.name) && file.size <= MAX_FILE_BYTES
+    );
     if (accepted.length === 0) return;
     setAttachments((current) => {
       const next = [...current, ...accepted].slice(0, MAX_FILES);
@@ -114,6 +135,8 @@ export default function ComposeUpdatePage() {
       type,
       title: title.trim(),
       description: body.trim(),
+      eventDateTime: null,
+      eventLocation: null,
       priority: urgent ? 'urgent' : 'normal',
       scope,
       departmentCode: deptCode,
@@ -143,6 +166,7 @@ export default function ComposeUpdatePage() {
     };
 
     let feedback;
+    let rejectedLocally = false;
     try {
       const response =
         attachments.length === 0
@@ -158,40 +182,76 @@ export default function ComposeUpdatePage() {
             })();
 
       // The server copy now carries this post, so retire the local mirror to
-      // avoid showing the same announcement twice in the feed.
+      // avoid showing the same announcement twice in the feed — and adopt the
+      // server's attachment URLs so files become openable everywhere.
       const saved = extractPayload(response);
       const serverId =
         saved && typeof saved === 'object' ? saved.id ?? saved._id ?? null : null;
       if (serverId) {
         try {
-          localFeed.markLocalUpdateSynced(update.id, serverId);
+          localFeed.markLocalUpdateSynced(update.id, serverId, saved?.attachments);
         } catch {
           /* non-critical */
         }
       }
       feedback = `Published \u2014 delivered to ${isBatch ? 'your batch' : `Section ${sectionName}`}`;
-    } catch {
-      feedback = `Published offline \u2014 \u201c${update.title}\u201d is in your ${isBatch ? 'batch' : 'section'} feed`;
+    } catch (error) {
+      const status = Number(error?.status ?? 0);
+      if (status >= 400 && status < 500) {
+        // A 4xx is a permanent rejection, not an outage — say so honestly
+        // instead of pretending the post is merely "offline".
+        rejectedLocally = true;
+        feedback = `Saved on this device only — the server rejected it: ${describeApiError(error)}`;
+      } else {
+        feedback = `Published offline \u2014 \u201c${update.title}\u201d is in your ${isBatch ? 'batch' : 'section'} feed`;
+      }
     }
 
     setPosting(false);
-    toast.success(feedback);
+    if (rejectedLocally) {
+      toast.error(feedback);
+    } else {
+      toast.success(feedback);
+    }
     navigate(-1);
   };
+
+  const canPost = Boolean(title.trim()) && Boolean(body.trim());
 
   return (
     <PageShell className="max-w-xl">
       <PageHeader
-        title="New announcement"
+        title={mode === 'event' ? 'New event' : 'New announcement'}
         onBack={() => navigate(-1)}
         actions={
-          <Button variant="filled" onClick={post} disabled={posting}>
-            {posting ? <Spinner size={16} /> : <Icon name="send" size={18} />}
-            <span>Post</span>
-          </Button>
+          mode === 'announcement' ? (
+            <Button variant="filled" onClick={post} disabled={posting || !canPost}>
+              {posting ? <Spinner size={16} /> : <Icon name="send" size={18} />}
+              <span>Post</span>
+            </Button>
+          ) : null
         }
       />
 
+      <SegmentedTabs
+        className="mb-4"
+        tabs={[
+          { value: 'announcement', label: 'Announcement', icon: 'campaign' },
+          { value: 'event', label: 'Event', icon: 'event_note' },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
+
+      {mode === 'event' ? (
+        <EventForm
+          auth={auth}
+          submitLabel="Publish event"
+          onCancel={() => navigate(-1)}
+          onSaved={() => navigate('/events')}
+        />
+      ) : (
+        <>
       {/* Audience */}
       <Card className="rounded-2xl">
         <div className="flex items-center gap-2">
@@ -332,11 +392,13 @@ export default function ComposeUpdatePage() {
         size="lg"
         className="mt-5 w-full"
         onClick={post}
-        disabled={posting}
+        disabled={posting || !canPost}
       >
         {posting ? <Spinner size={18} /> : <Icon name="send" size={18} />}
         <span>Post announcement</span>
       </Button>
+        </>
+      )}
     </PageShell>
   );
 }

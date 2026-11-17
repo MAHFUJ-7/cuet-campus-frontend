@@ -17,6 +17,7 @@ import {
 } from '../../lib/routineOverrides.js';
 import { useWeeklyRoutine } from '../routine/useRoutineData.js';
 import { CrDialog } from './CrShared.jsx';
+import { resolveTargetSection, useBatchSections } from './CrDialogs.jsx';
 
 const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
 const DAY_ORDER = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -63,7 +64,33 @@ function PreviewRow({ label, value }) {
 export default function PermanentRoutineDialog({ open, onClose, profile, section }) {
   const auth = useAuth();
   const toast = useToast();
-  const { entries, loading, refresh } = useWeeklyRoutine(section);
+  const batchSections = useBatchSections(profile);
+  const [sectionId, setSectionId] = useState('');
+
+  useEffect(() => {
+    if (!batchSections || sectionId) return;
+    const ownId = section?.id ?? profile?.section?.id ?? '';
+    const initial =
+      batchSections.find((s) => s.id === ownId)?.id ?? batchSections[0]?.id ?? '';
+    setSectionId(initial);
+  }, [batchSections, sectionId, section?.id, profile?.section?.id]);
+
+  // Stable section object — useWeeklyRoutine reloads whenever its identity
+  // changes, so this must not be rebuilt on every render.
+  const ownSectionFallback = useMemo(
+    () => ({
+      id: section?.id ?? '',
+      name: section?.name ?? '',
+      label: section?.label || (section?.name ? `Section ${section.name}` : 'My section'),
+    }),
+    [section?.id, section?.name, section?.label]
+  );
+  const targetSection = useMemo(
+    () => resolveTargetSection(batchSections, sectionId, profile) ?? ownSectionFallback,
+    [batchSections, sectionId, profile?.section?.id, profile?.section?.name, ownSectionFallback]
+  );
+
+  const { entries, loading, refresh } = useWeeklyRoutine(targetSection);
 
   const classes = useMemo(
     () =>
@@ -95,8 +122,13 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
     setReason('');
     setBusy(false);
     setResettingId(null);
-    setActiveOverrides(getRoutineOverrideList(section));
-  }, [open, section]);
+    setSectionId('');
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !targetSection?.id) return;
+    setActiveOverrides(getRoutineOverrideList(targetSection));
+  }, [open, targetSection]);
 
   useEffect(() => {
     if (!open || classes.length === 0) return;
@@ -180,7 +212,9 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
       room: room.trim() || null,
     };
     let synced = false;
-    if (!auth.isOfflineSession) {
+    if (!auth.isOfflineSession && String(targetSection.id) === String(section?.id ?? '')) {
+      // The server copy only applies to the CR's own section — routine rows of
+      // a sibling section stay a local-first edit on this device.
       try {
         await updateRoutine(selected.id, changes);
         synced = true;
@@ -191,14 +225,14 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
     }
     try {
       saveRoutineOverride({
-        section,
+        section: targetSection,
         entry: selected,
         changes,
         profile,
         reason,
         synced,
       });
-      setActiveOverrides(getRoutineOverrideList(section));
+      setActiveOverrides(getRoutineOverrideList(targetSection));
       try {
         await refresh();
       } catch {
@@ -221,7 +255,11 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
     if (!record?.entryId) return;
     setResettingId(record.entryId);
     let synced = false;
-    if (!auth.isOfflineSession && record.original) {
+    if (
+      !auth.isOfflineSession &&
+      record.original &&
+      String(targetSection.id) === String(section?.id ?? '')
+    ) {
       try {
         await updateRoutine(record.entryId, {
           day: record.original.day,
@@ -236,8 +274,8 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
       }
     }
     try {
-      clearRoutineOverride(section, record.entryId);
-      setActiveOverrides(getRoutineOverrideList(section));
+      clearRoutineOverride(targetSection, record.entryId);
+      setActiveOverrides(getRoutineOverrideList(targetSection));
       await refresh();
       toast.success(synced ? 'Routine change reset' : 'Local routine change reset');
     } catch (error) {
@@ -265,7 +303,7 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
           label: 'New',
           value: `${day} · P${period} · ${startTime}–${endTime}${room.trim() ? ` · ${room.trim()}` : ''}`,
         },
-        { label: 'Section', value: section?.label ?? section?.name ?? '—' },
+        { label: 'Section', value: targetSection?.label ?? section?.label ?? section?.name ?? '—' },
         { label: 'Note', value: reason.trim() || '—' },
       ]
     : [];
@@ -293,6 +331,7 @@ export default function PermanentRoutineDialog({ open, onClose, profile, section
       ) : (
         <>
           <div className="mt-4 space-y-3">
+            <SectionPicker sections={batchSections} value={sectionId} onChange={setSectionId} />
             <Field label="Weekly class">
               <select
                 value={selectedId ?? ''}
